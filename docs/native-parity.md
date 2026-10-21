@@ -58,3 +58,7 @@ are local adaptations of the existing upstream entry point, informed by the
 qualified KLI registrar startup. The new subprocess test launches the installed
 `kf-registrar` binary and probes both actual sockets. All ten tests pass in the
 installed-package container; this does not yet qualify the combined workflow.
+
+The combined service profile advances the shared dependency to
+`ae144adbadc10aa40a057d600fd4546f08275e1d`, the behavior-preserving observation
+extraction. Registrar and observer now select the same core revision.
