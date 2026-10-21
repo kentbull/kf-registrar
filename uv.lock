@@ -296,7 +296,7 @@ wheels = [
 [[package]]
 name = "keri"
 version = "2.1.0.dev1"
-source = { git = "https://github.com/kentbull/keripy.git?rev=ae144adbadc10aa40a057d600fd4546f08275e1d#ae144adbadc10aa40a057d600fd4546f08275e1d" }
+source = { git = "https://github.com/kentbull/keripy.git?rev=993b58266992b786d044fd3938e114a19d76f62f#993b58266992b786d044fd3938e114a19d76f62f" }
 dependencies = [
     { name = "apispec" },
     { name = "blake3" },
@@ -344,7 +344,7 @@ dev = [
 requires-dist = [
     { name = "falcon", specifier = ">=4.2.0" },
     { name = "hio", specifier = ">=0.7.19" },
-    { name = "keri", git = "https://github.com/kentbull/keripy.git?rev=ae144adbadc10aa40a057d600fd4546f08275e1d" },
+    { name = "keri", git = "https://github.com/kentbull/keripy.git?rev=993b58266992b786d044fd3938e114a19d76f62f" },
     { name = "multicommand", specifier = ">=1.0.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.0.2" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.11.0,<0.16" },

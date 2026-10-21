@@ -26,7 +26,7 @@ classifiers = [
 
 dependencies = [
     "hio>=0.7.19",
-    "keri @ git+https://github.com/kentbull/keripy.git@ae144adbadc10aa40a057d600fd4546f08275e1d",
+    "keri @ git+https://github.com/kentbull/keripy.git@993b58266992b786d044fd3938e114a19d76f62f",
     "multicommand>=1.0.0",
     "falcon>=4.2.0",
 ]
