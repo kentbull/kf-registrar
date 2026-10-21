@@ -5,6 +5,7 @@ kfregistrar.core.serving module
 Dual HTTP registrar node: localhost controller API and observer-only bulk TEL API.
 """
 
+from pathlib import Path
 from urllib.parse import urlsplit
 
 import falcon
@@ -15,6 +16,7 @@ from keri.acdc import Registrar, Regery
 from keri.app.indirecting import createHttpServer
 from keri.app.evidencing import EvidenceContext
 from keri.db.basing import BaserDoer
+from keri.kering import ConfigurationError
 
 from kfregistrar.app import httping
 from kfregistrar.core.ingesting import ControllerIngester
@@ -217,6 +219,9 @@ def setup(
     host="127.0.0.1",
     port=6632,
     observers=None,
+    publishers=None,
+    fullEvidence=False,
+    kel=(),
     keypath=None,
     certpath=None,
     cafilepath=None,
@@ -236,12 +241,24 @@ def setup(
         port (int): port for the observer-facing API.
         observers (list[str] | None): observer AIDs allowed on the external API.
             Combined with any ``observers`` list in Habery config.
+        publishers: optional AIDs authorized for signed external publication.
+        fullEvidence: return supporting KEL with framed TEL on bulk queries.
+        kel: iterable of signed KEL bootstrap paths, verified before binding.
         keypath, certpath, cafilepath: optional TLS material for both servers.
 
     Returns:
         list: HIO doers including the registrar Context and both HTTP servers.
     """
-    ctx = makeContext(hby=hby, alias=alias, observers=observers, **kwa)
+    ctx = makeContext(hby=hby, alias=alias, observers=observers,
+                      publishers=publishers, fullEvidence=fullEvidence, **kwa)
+    try:
+        for path in kel:
+            result = ctx.ingest(Path(path).read_bytes())
+            if result["rejected"] or result["pending"]:
+                raise ConfigurationError("registrar bootstrap evidence is incomplete or invalid")
+    except BaseException:
+        ctx.close()
+        raise
 
     advertisedHost, advertisedPort = _applyCurls(hby.cf, host, port)
     ctx.host = advertisedHost

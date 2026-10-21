@@ -43,3 +43,18 @@ no LMDB directory is bind-mounted from macOS. Nine tests pass: all seven origina
 service tests plus independent full-proof/public-update verification and durable
 reopen recovery without TEL retransmission. This focused result is not the
 multi-component end-to-end qualification or a Locksmith UI result.
+
+## Operator entry point
+
+`kf-registrar start --publisher AID --observer AID --full-evidence --kel FILE`
+selects the additive evidence profile. Repeat role/bootstrap options as needed.
+`KLI_KEYSTORE_PASSCODE` supplies the existing KLI passcode convention without
+placing the secret in command arguments. The local controller API still uses
+`--bootport`; external consumers use `--http`. Invalid or incomplete bootstrap
+fails before binding the listeners.
+
+`start.runRegistrar`, its parser additions and `serving.setup` bootstrap wiring
+are local adaptations of the existing upstream entry point, informed by the
+qualified KLI registrar startup. The new subprocess test launches the installed
+`kf-registrar` binary and probes both actual sockets. All ten tests pass in the
+installed-package container; this does not yet qualify the combined workflow.
