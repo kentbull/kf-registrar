@@ -77,3 +77,21 @@ component tests. The clean multi-component story matrix is recorded separately;
 a component suite alone does not establish that outcome. Existing changed-symbol
 lineage remains the application source audit, with Git history retaining the
 individual predecessor lines and contributors.
+
+## Registrar PR 2 disposition
+
+The inspected proposal is Jay-Alexander Elliot's
+[`4af546a`](https://github.com/keri-foundation/kf-registrar/commit/4af546a29b3248b839626b8371db7ba0942c5340),
+“preserve independent TEL submissions and repair replay heads.” Its
+`_PendingSubmission`, `_restorePending`, `_clearSubmission` and application-owned
+chain persistence address real pending/replay concerns in the donor service.
+
+Those goals are retained, but that implementation is **superseded** here by the
+shared core Rever's durable per-event escrows and atomic accepted-history owner.
+`ControllerIngester.ingest` and `retryPending` delegate to that owner instead of
+importing another pending table or writing accepted ordinals/heads themselves.
+The donor PR is therefore design/comparison evidence, not a copied source claim.
+The component's independent-proof and restart-without-retransmission tests,
+together with the core conflict/replay regressions, cover the replacement
+boundary. This does not claim a migration or automatic repair procedure for an
+arbitrary database previously produced by the donor PR.
