@@ -10,6 +10,7 @@ import json
 
 import falcon
 from keri import Vrsn_2_0
+from keri.app.evidence_httping import authenticate
 from keri.app.httping import CESR_ATTACHMENT_HEADER, CESR_CONTENT_TYPE
 from keri.core import Number, Parser, SerderACDC, SerderKERI
 from keri.kering import (
@@ -45,7 +46,9 @@ def _registrySaids(qry, store, rgy):
         return allRegistrySaids(store, rgy)
     if isinstance(raw, str):
         return [raw]
-    return list(raw)
+    if isinstance(raw, list) and all(isinstance(item, str) and item for item in raw):
+        return raw
+    raise falcon.HTTPBadRequest(description="registry scope must be an AID or list of AIDs")
 
 
 def cloneRegs(store, regks, sn=0):
@@ -245,6 +248,16 @@ class BulkQueryEnd:
         )
 
     def on_post(self, req, rep):
+        """Authenticate a single query and return the configured evidence profile.
+
+        Parameters:
+            req: Falcon request carrying signed native CESR, optionally using
+                the original CESR attachment header transport.
+            rep: response receiving accepted bare TEL or full KEL/TEL evidence.
+        Raises:
+            falcon.HTTPError: malformed, unauthorized, unavailable or unknown
+                registry requests. No network acquisition occurs on this path.
+        """
         try:
             ims = _loadQueryStream(req)
         except falcon.HTTPError:
@@ -254,14 +267,14 @@ class BulkQueryEnd:
 
         try:
             dom = Parser(version=Vrsn_2_0).parseOne(
-                ims=bytearray(ims), framed=True, processive=False
+                ims=ims, framed=True, processive=False
             )
         except Exception as ex:
             raise falcon.HTTPBadRequest(description=str(ex)) from ex
-        if not getattr(dom, "serder", None):
-            raise falcon.HTTPBadRequest(description="unable to parse signed query")
+        if ims or not getattr(dom, "serder", None):
+            raise falcon.HTTPBadRequest(description="expected exactly one complete signed query")
         serder = dom.serder
-        if serder.ilk != "qry":
+        if serder.ilk != "qry" or serder.pvrsn != Vrsn_2_0:
             raise falcon.HTTPBadRequest(description="external API accepts qry messages only")
 
         route = serder.ked.get("r", "")
@@ -292,6 +305,8 @@ class BulkQueryEnd:
         )
 
         kramer = self.ctx.kvy.kramer
+        if kramer is None or not kramer.enabled:
+            raise falcon.HTTPServiceUnavailable(description="KRAM unavailable")
         if kramer is not None:
             kramer.reconcileConfig()
             try:
@@ -301,7 +316,12 @@ class BulkQueryEnd:
             if result is None:
                 raise falcon.HTTPUnauthorized(description="KRAM rejected query")
 
-        sn = _snFromQuery(qry)
+        try:
+            sn = _snFromQuery(qry)
+            if sn < 0:
+                raise ValueError("negative sequence number")
+        except (ValueError, TypeError) as ex:
+            raise falcon.HTTPBadRequest(description="invalid sequence number") from ex
         store = self.ctx.rgy.store
         regks = _registrySaids(qry, store, self.ctx.rgy)
         unknown = [
@@ -318,6 +338,33 @@ class BulkQueryEnd:
             [regk for regk in regks if knownRegistry(store, self.ctx.rgy, regk)],
             sn=sn,
         )
+        if self.ctx.fullEvidence:
+            data = self.ctx.clone(regks, sn=sn)
         rep.set_header("Content-Type", CESR_CONTENT_TYPE)
         rep.status = falcon.HTTP_200
         rep.data = data
+
+
+class PublishEnd:
+    """Optional signed publication endpoint, separate from the local admin API."""
+
+    def __init__(self, ctx):
+        """Bind the caller-owned context and its explicit publisher allowlist."""
+        self.ctx = ctx
+
+    def on_post(self, req, rep):
+        """Authenticate one publication before processing its public evidence.
+
+        Parameters:
+            req: Falcon request containing a signed native tels/publish query.
+            rep: response receiving 200, 202 (pending), or 422 (rejected).
+        Raises:
+            falcon.HTTPError: authentication, authorization, or payload failure.
+        """
+        _, qry = authenticate(req, self.ctx, self.ctx.publishers, ("tels/publish",))
+        raw = qry.get("stream")
+        if not isinstance(raw, str) or not raw:
+            raise falcon.HTTPBadRequest(description="q.stream must contain public CESR evidence")
+        rep.media = self.ctx.ingest(raw.encode())
+        rep.status = (falcon.HTTP_422 if rep.media["rejected"] else
+                      falcon.HTTP_202 if rep.media["pending"] else falcon.HTTP_200)
