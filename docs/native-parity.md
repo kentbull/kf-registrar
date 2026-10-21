@@ -62,3 +62,18 @@ installed-package container; this does not yet qualify the combined workflow.
 The combined service profile advances the shared dependency to
 `ae144adbadc10aa40a057d600fd4546f08275e1d`, the behavior-preserving observation
 extraction. Registrar and observer now select the same core revision.
+
+## Common runtime pin and source-review boundary
+
+The additive qualification now uses KERIpy
+`993b58266992b786d044fd3938e114a19d76f62f` and this component at
+`917767dfaf8d06387529c1663b027c656984d4c4`. Earlier pins and results above are
+historical checkpoints. The package declaration and lock select the same exact
+core revision; no sibling editable source is required. The pin follow-up changes
+no application symbol or protocol policy.
+
+A fresh clone installed in the common Linux scenario image passes all 10
+component tests. The clean multi-component story matrix is recorded separately;
+a component suite alone does not establish that outcome. Existing changed-symbol
+lineage remains the application source audit, with Git history retaining the
+individual predecessor lines and contributors.
