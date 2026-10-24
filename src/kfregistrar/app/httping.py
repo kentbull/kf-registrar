@@ -251,7 +251,7 @@ class BulkQueryEnd:
         """Authenticate a single query and return the configured evidence profile.
 
         Parameters:
-            req: Falcon request carrying signed native CESR, optionally using
+            req: Falcon request carrying signed CESR-framed KERI v2 query, optionally using
                 the original CESR attachment header transport.
             rep: response receiving accepted bare TEL or full KEL/TEL evidence.
         Raises:
@@ -356,7 +356,7 @@ class PublishEnd:
         """Authenticate one publication before processing its public evidence.
 
         Parameters:
-            req: Falcon request containing a signed native tels/publish query.
+            req: Falcon request containing a signed KERI v2 tels/publish query.
             rep: response receiving 200, 202 (pending), or 422 (rejected).
         Raises:
             falcon.HTTPError: authentication, authorization, or payload failure.

@@ -124,7 +124,7 @@ class ControllerIngester:
 
         Parameters:
             kel: bytes or text containing signed supporting KEL evidence.
-            tel: bytes or text containing concatenated native TEL bodies.
+            tel: bytes or text containing concatenated ACDC v2 registry TEL bodies.
         Returns:
             dict: accepted, pending, rejected and accepted-head maps. A parse
                 failure is reported before any of this batch is processed.

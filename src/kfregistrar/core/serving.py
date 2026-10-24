@@ -60,7 +60,7 @@ class Context(EvidenceContext):
 
     def __init__(self, hby, hab, rgy, observers=None, publishers=None,
                  fullEvidence=False, config=None):
-        """Bind application policy to a single native verification runtime.
+        """Bind application policy to a single KEL and ACDC v2 registry verification runtime.
 
         Parameters:
             hby, hab: caller-owned habitat environment and local controller.
