@@ -13,13 +13,13 @@ from hio.base import doing
 from hio.core import http
 from keri import help
 from keri.acdc import Registrar, Regery
-from keri.app.indirecting import createHttpServer
 from keri.app.evidencing import EvidenceContext
 from keri.db.basing import BaserDoer
 from keri.kering import ConfigurationError
 
 from kfregistrar.app import httping
 from kfregistrar.core.ingesting import ControllerIngester
+from kfregistrar.core.netting import boundedHttpServer
 
 
 logger = help.ogler.getLogger()
@@ -264,7 +264,7 @@ def setup(
     ctx.host = advertisedHost
     ctx.port = advertisedPort
 
-    bootServer = createHttpServer(
+    bootServer = boundedHttpServer(
         host=bootHost,
         port=bootPort,
         app=ctx.internalApp,
@@ -276,7 +276,7 @@ def setup(
         raise RuntimeError(f"cannot create internal HTTP server on port {bootPort}")
     bootSrvrDoer = http.ServerDoer(server=bootServer)
 
-    server = createHttpServer(
+    server = boundedHttpServer(
         host=host,
         port=port,
         app=ctx.externalApp,

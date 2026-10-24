@@ -6,6 +6,7 @@ Controller ingest of pre-built, KEL-anchored TEL events for hosting.
 from collections import defaultdict
 
 from keri import Vrsn_2_0, help
+from keri.acdc.regeventing import requireSupportedEvent
 from keri.core import Parser, SerderACDC, Counter, Codens
 from keri.kering import ValidationError
 
@@ -17,7 +18,7 @@ def parseTelStream(stream):
     """Parse concatenated CESR TEL event bodies into SerderACDC instances.
 
     Parameters:
-        stream (bytes | bytearray): concatenated ``rip`` / ``bup`` / ``upd`` bodies.
+        stream (bytes | bytearray): concatenated ``rip`` / ``bup`` bodies.
 
     Returns:
         list[SerderACDC]: parsed events in stream order.
@@ -39,14 +40,15 @@ def groupTelEvents(events):
 
     Returns:
         dict[str, tuple[SerderACDC | None, list[SerderACDC]]]:
-            registry SAID -> (rip or None, list of bup/upd events).
+            registry SAID -> (rip or None, list of bup events).
     """
     groups = defaultdict(lambda: [None, []])
     for serder in events:
+        requireSupportedEvent(serder)
         if serder.ilk == "rip":
             regk = serder.said
             groups[regk][0] = serder
-        elif serder.ilk in ("bup", "upd"):
+        elif serder.ilk == "bup":
             regk = serder.sad["rd"]
             groups[regk][1].append(serder)
         else:
@@ -120,7 +122,7 @@ class ControllerIngester:
         self.context = context
 
     def ingest(self, kel, tel):
-        """Verify admin KEL text and bare rip/bup/upd bodies through the core.
+        """Verify admin KEL text and bare rip/bup bodies through the core.
 
         Parameters:
             kel: bytes or text containing signed supporting KEL evidence.

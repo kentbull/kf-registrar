@@ -10,6 +10,7 @@ import json
 
 import falcon
 from keri import Vrsn_2_0
+from keri.acdc.regeventing import requireSupportedEvent
 from keri.app.evidence_httping import authenticate
 from keri.app.httping import CESR_ATTACHMENT_HEADER, CESR_CONTENT_TYPE
 from keri.core import Number, Parser, SerderACDC, SerderKERI
@@ -21,6 +22,7 @@ from keri.kering import (
 )
 
 from kfregistrar.core.ingesting import allRegistrySaids, knownRegistry
+from kfregistrar.core.netting import boundedClone
 
 BULK_ROUTES = ("tels/bulk", "regs")
 WALLET_ROUTES = ("tels", "tsn", "logs", "ksn", "mbx")
@@ -55,7 +57,12 @@ def cloneRegs(store, regks, sn=0):
     """Concatenate accepted TEL CESR for one or more registry SAIDs."""
     stream = bytearray()
     for regk in regks:
-        stream.extend(store.cloneTel(regk, sn=sn))
+        accepted = [SerderACDC(raw=raw) for raw in store.cloneTelIter(regk)]
+        for event in accepted:
+            requireSupportedEvent(event)
+        for event in accepted:
+            if Number(numh=event.sad['n']).num >= sn:
+                stream.extend(event.raw)
     return bytes(stream)
 
 
@@ -220,6 +227,7 @@ class RegistryUpdateEnd:
         try:
             acdc = _parseAcdc(acdcSad)
             blinder, bup = self.ctx.registrar.issue(regk, acdc=acdc, state=state)
+            self.ctx.store.retainOpening(bup, blinder)
         except (ConfigurationError, ValidationError) as ex:
             raise falcon.HTTPBadRequest(description=str(ex)) from ex
 
@@ -333,13 +341,17 @@ class BulkQueryEnd:
                 description=f"unknown registry {unknown[0]}"
             )
 
-        data = cloneRegs(
-            store,
-            [regk for regk in regks if knownRegistry(store, self.ctx.rgy, regk)],
-            sn=sn,
-        )
-        if self.ctx.fullEvidence:
-            data = self.ctx.clone(regks, sn=sn)
+        try:
+            data = cloneRegs(
+                store,
+                [regk for regk in regks if knownRegistry(store, self.ctx.rgy, regk)],
+                sn=sn,
+            )
+            if self.ctx.fullEvidence:
+                data = boundedClone(self.ctx, regks, sn=sn)
+        except ValidationError as ex:
+            raise falcon.HTTPUnprocessableEntity(
+                description='registry history is outside the supported evidence profile') from ex
         rep.set_header("Content-Type", CESR_CONTENT_TYPE)
         rep.status = falcon.HTTP_200
         rep.data = data
