@@ -15,7 +15,7 @@ source. Attribution identifies source lineage, not personal responsibility for
 this fork's changes.
 
 The KERI dependency is Kent's qualified fork at
-`4b1078e037c6f39dc398044e3436d071345d43a0`. The lock no longer resolves an
+`993b58266992b786d044fd3938e114a19d76f62f`. The lock no longer resolves an
 editable sibling checkout. Its required multidict 6.9.1 accounts for generated
 wheel/hash changes relative to the old sibling dependency's 6.8.0.
 
@@ -35,15 +35,6 @@ registrar subprocess. Shared core evidence verification is a library dependency.
 Local admin issuance remains available and external publication grants no
 issuer signing authority or access to private registry derivation salts.
 
-## Verification
-
-The component Dockerfile installs the package into the qualified core image.
-Tests disable pytest source-path injection and use Linux-owned named volumes;
-no LMDB directory is bind-mounted from macOS. Nine tests pass: all seven original
-service tests plus independent full-proof/public-update verification and durable
-reopen recovery without TEL retransmission. This focused result is not the
-multi-component end-to-end qualification or a Locksmith UI result.
-
 ## Operator entry point
 
 `kf-registrar start --publisher AID --observer AID --full-evidence --kel FILE`
@@ -56,27 +47,16 @@ fails before binding the listeners.
 `start.runRegistrar`, its parser additions and `serving.setup` bootstrap wiring
 are local adaptations of the existing upstream entry point, informed by the
 qualified KLI registrar startup. The new subprocess test launches the installed
-`kf-registrar` binary and probes both actual sockets. All ten tests pass in the
-installed-package container; this does not yet qualify the combined workflow.
+`kf-registrar` binary and probes both actual sockets. This verifies the component entry point; composed execution is recorded separately.
 
-The combined service profile advances the shared dependency to
-`ae144adbadc10aa40a057d600fd4546f08275e1d`, the behavior-preserving observation
-extraction. Registrar and observer now select the same core revision.
+## Runtime dependency and component checks
 
-## Common runtime pin and source-review boundary
-
-The additive qualification now uses KERIpy
-`993b58266992b786d044fd3938e114a19d76f62f` and this component at
-`917767dfaf8d06387529c1663b027c656984d4c4`. Earlier pins and results above are
-historical checkpoints. The package declaration and lock select the same exact
-core revision; no sibling editable source is required. The pin follow-up changes
-no application symbol or protocol policy.
-
-A fresh clone installed in the common Linux scenario image passes all 10
-component tests. The clean multi-component story matrix is recorded separately;
-a component suite alone does not establish that outcome. Existing changed-symbol
-lineage remains the application source audit, with Git history retaining the
-individual predecessor lines and contributors.
+The package declaration and lock retain KERIpy
+`993b58266992b786d044fd3938e114a19d76f62f`; no editable sibling or experiment
+checkout is required. Run `python -m pytest -q tests` with the installed package
+and declared dependencies. Tests remain with this service, including real
+process/socket and authenticated evidence regressions. Cross-repository
+qualification and its image construction are owned by the experiment repository.
 
 ## Registrar PR 2 disposition
 
@@ -95,3 +75,11 @@ The component's independent-proof and restart-without-retransmission tests,
 together with the core conflict/replay regressions, cover the replacement
 boundary. This does not claim a migration or automatic repair procedure for an
 arbitrary database previously produced by the donor PR.
+
+## Experiment ownership
+
+Cross-repository recipes, external acceptance scenarios and dated evidence are
+owned by the independent `keri-v2` experiment repository. They are not required
+to run this component. [Pre-extraction record](https://github.com/kentbull/kf-registrar/blob/9737a51a3997adf8f96aba52299af8dca4e1220d/docs/native-parity.md) preserves the
+historical source and execution scope. The extraction changes ownership only;
+runtime dependencies and verification contracts remain unchanged.
