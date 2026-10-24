@@ -8,6 +8,7 @@ kfregistrar.app.cli.commands.start module
 import argparse
 import logging
 import sys
+import os
 
 from hio.base import doing
 from keri import __version__, help
@@ -82,7 +83,7 @@ parser.add_argument(
     "-p",
     help="22 character encryption passcode for keystore (is not saved)",
     dest="bran",
-    default=None,
+    default=os.getenv("KLI_KEYSTORE_PASSCODE"),
 )
 parser.add_argument(
     "--config-dir",
@@ -104,6 +105,12 @@ parser.add_argument(
     default=None,
     help="Observer AID allowed to pull bulk TEL. Repeatable.",
 )
+parser.add_argument("--publisher", action="append", default=[],
+                    help="AID allowed to publish signed public evidence. Repeatable.")
+parser.add_argument("--full-evidence", action="store_true",
+                    help="Return supporting KEL and framed TEL to bulk observers.")
+parser.add_argument("--kel", action="append", default=[],
+                    help="Signed public KEL bootstrap file. Repeatable.")
 parser.add_argument(
     "--loglevel",
     action="store",
@@ -154,7 +161,17 @@ def launch(args):
 
 
 def runRegistrar(args, expire=0.0):
-    """Set up Habery and run the registrar until expiry."""
+    """Run this package's service using parsed CLI policy and bootstrap files.
+
+    Parameters:
+        args: parsed start arguments, including optional publishers, complete
+            evidence mode, and signed KEL paths. The passcode defaults to the
+            existing KLI_KEYSTORE_PASSCODE environment convention.
+        expire: HIO run limit in seconds; zero runs until cancellation.
+    Raises:
+        AuthError: encrypted identity cannot be unlocked without prompting.
+        ConfigurationError: bootstrap evidence is invalid or incomplete.
+    """
     noPrompt = args.noPrompt if args.noPrompt is not None else not sys.stdin.isatty()
 
     ks = Keeper(name=args.name, base=args.base, temp=False, reopen=True)
@@ -200,6 +217,9 @@ def runRegistrar(args, expire=0.0):
                 host=args.host,
                 port=int(args.http),
                 observers=args.observers,
+                publishers=args.publisher,
+                fullEvidence=args.full_evidence,
+                kel=args.kel,
                 keypath=args.keypath,
                 certpath=args.certpath,
                 cafilepath=args.cafilepath,
