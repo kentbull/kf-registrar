@@ -9,7 +9,6 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 import falcon
-from hio.base import doing
 from hio.core import http
 from keri import help
 from keri.acdc import Registrar, Regery
