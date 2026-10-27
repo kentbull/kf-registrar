@@ -5,17 +5,17 @@ kfregistrar.core.serving module
 Dual HTTP registrar node: localhost controller API and observer-only bulk TEL API.
 """
 
+from pathlib import Path
 from urllib.parse import urlsplit
 
 import falcon
-from hio.base import doing
 from hio.core import http
 from keri import help
 from keri.acdc import Registrar, Regery
+from keri.app.evidencing import EvidenceContext
 from keri.app.indirecting import createHttpServer
-from keri.core import Kevery
-from keri.core.kraming import Kramer
 from keri.db.basing import BaserDoer
+from keri.kering import ConfigurationError
 
 from kfregistrar.app import httping
 from kfregistrar.core.ingesting import ControllerIngester
@@ -54,30 +54,50 @@ class StaticConfig:
         return self.data
 
 
-class Context(doing.DoDoer):
-    """Running registrar node: Habery, Regery, KRAM, and both Falcon apps."""
+class Context(EvidenceContext):
+    """Own shared evidence processors and the registrar's two HTTP surfaces."""
 
-    def __init__(self, hby, hab, rgy, kvy, observers=None):
-        self.hby = hby
+    def __init__(self, hby, hab, rgy, observers=None, publishers=None,
+                 fullEvidence=False, config=None):
+        """Bind application policy to a single KEL and ACDC v2 registry verification runtime.
+
+        Parameters:
+            hby, hab: caller-owned habitat environment and local controller.
+            rgy: local registry manager sharing the evidence backend.
+            observers, publishers: AIDs authorized to read or publish evidence.
+            fullEvidence: return supporting KEL and framed TEL on bulk reads.
+            config: enabled KRAM policy; disabled authentication fails closed.
+
+        The context owns one pruner and one escrow loop. Call close only after
+        cancelling its doers; the caller retains ownership of hby.
+        """
         self.hab = hab
         self.rgy = rgy
         self.registrar = Registrar(rgy=rgy)
-        self.kvy = kvy
-        self.ingester = ControllerIngester(hby=hby, store=rgy.store, kvy=kvy)
         self.observers = osetOf(observers)
+        self.publishers = osetOf(publishers)
+        self.fullEvidence = fullEvidence
         self.internalApp = None
         self.externalApp = None
-        super(Context, self).__init__(doers=[doing.doify(self.escrowDo)])
+        super().__init__(hby, reger=rgy.baser, config=config)
+        self.ingester = ControllerIngester(context=self)
 
     def escrowDo(self, tymth=None, tock=0.0, **kwa):
-        """Replay registry escrows and retry pending controller ingest."""
+        """Retry local issuance and remote evidence using the scheduler's clock.
+
+        Parameters:
+            tymth: injected HIO clock; tock: cooperative retry interval.
+            **kwa: unused scheduler metadata.
+        Yields:
+            float: delay before the next bounded escrow pass.
+        """
         self.wind(tymth)
-        self.tock = tock
-        _ = yield self.tock
+        yield tock
         while True:
+            self.kvy.processEscrows()
+            self.rever.processEscrows()
             self.rgy.processEscrows()
-            self.ingester.retryPending()
-            yield self.tock
+            yield tock
 
 
 def osetOf(values):
@@ -150,9 +170,12 @@ def loadExternalEnds(app, ctx):
     app.add_route("/health", httping.HealthEnd())
     app.add_route("/", httping.BulkQueryEnd(ctx))
     app.add_route("/query", httping.QueryRejectEnd())
+    if ctx.publishers:
+        app.add_route("/ingest", httping.PublishEnd(ctx))
 
 
-def makeContext(hby, alias="registrar", observers=None, **kwa):
+def makeContext(hby, alias="registrar", observers=None, publishers=None,
+                fullEvidence=False, **kwa):
     """Build the registrar Context and Falcon apps without binding sockets.
 
     Parameters:
@@ -160,6 +183,8 @@ def makeContext(hby, alias="registrar", observers=None, **kwa):
         alias (str): habitat name for the registrar/issuer controller.
         observers (list[str] | None): observer AIDs allowed on the external API.
             Combined with any ``observers`` list in Habery config.
+        publishers: optional AIDs allowed to publish signed public evidence.
+        fullEvidence: opt into KEL plus framed TEL responses for independent verification.
 
     Returns:
         Context: registrar node with internalApp and externalApp attached.
@@ -170,22 +195,10 @@ def makeContext(hby, alias="registrar", observers=None, **kwa):
 
     rgy = Regery(hby=hby, name=hby.name, base=hby.base, temp=hby.temp)
 
-    cf = _configWithKram(hby.cf)
-    kvy = Kevery(
-        db=hby.db,
-        cf=cf,
-        enableKram=True,
-        lax=True,
-        local=False,
-    )
-    if kvy.kramer is None:
-        kvy.kramer = Kramer(db=hby.db, cf=cf, cues=kvy.cues)
-
     obs = osetOf(observers) | osetOf(_observersFromConfig(hby.cf))
-    for aid in obs:
-        kvy.allowList.add(aid)
-
-    ctx = Context(hby=hby, hab=hab, rgy=rgy, kvy=kvy, observers=obs)
+    ctx = Context(hby=hby, hab=hab, rgy=rgy, observers=obs,
+                  publishers=publishers, fullEvidence=fullEvidence,
+                  config=_configWithKram(hby.cf).get())
 
     internalApp = _corsApp()
     loadInternalEnds(internalApp, ctx)
@@ -205,6 +218,9 @@ def setup(
     host="127.0.0.1",
     port=6632,
     observers=None,
+    publishers=None,
+    fullEvidence=False,
+    kel=(),
     keypath=None,
     certpath=None,
     cafilepath=None,
@@ -224,12 +240,24 @@ def setup(
         port (int): port for the observer-facing API.
         observers (list[str] | None): observer AIDs allowed on the external API.
             Combined with any ``observers`` list in Habery config.
+        publishers: optional AIDs authorized for signed external publication.
+        fullEvidence: return supporting KEL with framed TEL on bulk queries.
+        kel: iterable of signed KEL bootstrap paths, verified before binding.
         keypath, certpath, cafilepath: optional TLS material for both servers.
 
     Returns:
         list: HIO doers including the registrar Context and both HTTP servers.
     """
-    ctx = makeContext(hby=hby, alias=alias, observers=observers, **kwa)
+    ctx = makeContext(hby=hby, alias=alias, observers=observers,
+                      publishers=publishers, fullEvidence=fullEvidence, **kwa)
+    try:
+        for path in kel:
+            result = ctx.ingest(Path(path).read_bytes())
+            if result["rejected"] or result["pending"]:
+                raise ConfigurationError("registrar bootstrap evidence is incomplete or invalid")
+    except BaseException:
+        ctx.close()
+        raise
 
     advertisedHost, advertisedPort = _applyCurls(hby.cf, host, port)
     ctx.host = advertisedHost

@@ -1,21 +1,33 @@
 # -*- encoding: utf-8 -*-
 import falcon
+import pytest
 from falcon import testing
 
 from keri import Vrsn_2_0
-from keri.acdc import acdcmap, blindate, regcept
+from keri.acdc import acdcmap, blindate, regcept, update
 from keri.app.habbing import openHab, openHby
 from keri.app.httping import CESR_CONTENT_TYPE
-from keri.core import Blinder, SerderACDC, query
+from keri.core import Blinder, Diger, SerderACDC, query
 from keri.core.signing import Salter
 from keri.help import helping
+from keri.kering import ValidationError
 
+from kfregistrar.core.ingesting import groupTelEvents
 from kfregistrar.core.serving import makeContext
 
 
 STAMP0 = "2025-07-04T17:50:00.000000+00:00"
 STAMP1 = "2025-08-01T18:06:10.988921+00:00"
 SALT = Salter(raw=b"0123456789abcdef").qb64
+
+
+def test_controller_grouping_rejects_historical_upd_shape():
+    """Keep upd syntactically constructible while refusing registrar ingestion."""
+    rip = regcept(israid=Diger(ser=b'legacy issuer').qb64)
+    legacy = update(rip.said, rip.said, rip.said, 'issued')
+    assert SerderACDC(raw=legacy.raw).ilk == 'upd'
+    with pytest.raises(ValidationError, match='retired'):
+        groupTelEvents([legacy])
 
 
 def _postCesr(client, hab, serder, path="/"):
@@ -102,6 +114,7 @@ def test_internal_rip_bup_land_in_regbaser():
             assert updated.status == falcon.HTTP_201
             assert ctx.rgy.store.seqEvent(regk, 1).ilk == "bup"
             assert ctx.rgy.store.headEvent(regk).said == updated.json["said"]
+            assert ctx.rgy.store.opening(updated.json["said"]) is not None
 
             cloned = client.simulate_get(f"/registries/{regk}")
             assert cloned.status == falcon.HTTP_200
