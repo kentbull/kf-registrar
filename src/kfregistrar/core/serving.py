@@ -63,7 +63,7 @@ class Context(EvidenceContext):
 
         Parameters:
             hby, hab: caller-owned habitat environment and local controller.
-            rgy: local registry manager sharing the evidence backend.
+            rgy: local registry manager owned and closed by this service context.
             observers, publishers: AIDs authorized to read or publish evidence.
             fullEvidence: return supporting KEL and framed TEL on bulk reads.
             config: enabled KRAM policy; disabled authentication fails closed.
@@ -98,6 +98,15 @@ class Context(EvidenceContext):
             self.rever.processEscrows()
             self.rgy.processEscrows()
             yield tock
+
+    def close(self):
+        """Close the service-owned registry manager after its doers stop.
+
+        EvidenceContext borrows the backing store; the registrar application
+        owns its manager and releases it here. Habery remains caller-owned.
+        """
+        self.rgy.close()
+        super().close()
 
 
 def osetOf(values):
