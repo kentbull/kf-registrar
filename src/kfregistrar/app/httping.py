@@ -264,6 +264,12 @@ class RegistryUpdateEnd:
         self.ctx = ctx
 
     def on_post(self, req, rep, regk):
+        """Append and anchor the internal update requested by Falcon req for regk.
+
+        Require a known local registry and an ACDC body, then use the shared registrar
+        and core KEL/TEL processors. rep contains the authored event coordinates;
+        invalid authoring inputs produce an HTTP error, not a synthetic accepted row.
+        """
         if regk not in self.ctx.rgy.regs:
             raise falcon.HTTPNotFound(description=f"unknown registry {regk}")
         body = req.media or {}
