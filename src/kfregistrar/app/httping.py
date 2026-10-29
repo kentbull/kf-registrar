@@ -11,7 +11,6 @@ import json
 import falcon
 from keri import Vrsn_2_0
 from keri.acdc.regeventing import requireSupportedEvent
-from keri.app.evidence_httping import authenticate
 from keri.app.httping import CESR_ATTACHMENT_HEADER, CESR_CONTENT_TYPE
 from keri.core import Number, Parser, SerderACDC, SerderKERI
 from keri.kering import (
@@ -25,6 +24,56 @@ from kfregistrar.core.ingesting import allRegistrySaids, knownRegistry
 
 BULK_ROUTES = ("tels/bulk", "regs")
 WALLET_ROUTES = ("tels", "tsn", "logs", "ksn", "mbx")
+
+
+# Service HTTP policy moved from KERIpy aea8fbc6 evidence_httping.py.
+# KRAM remains the protocol authority; no cross-service adapter package is needed.
+def authenticate(req, ctx, allowed, routes):
+    """Authenticate one complete KERI v2 signed query and enforce the service allowlist.
+
+        Args:
+            req: Falcon request carrying one signed CESR query in its bounded body.
+            ctx (Context): Service holding enabled KRAM and authenticated KEL evidence.
+            allowed (Collection[str]): Explicit requester AIDs permitted for this route.
+            routes (Collection[str]): Query routes this endpoint accepts.
+
+        Returns:
+            tuple: Authenticated query Serder and its query-attribute map.
+
+        Raises:
+            falcon.HTTPError: Unsupported media, malformed/multiple messages, forbidden
+                AID/route, unavailable authentication, or invalid/replayed evidence.
+
+        Authorization alone cannot authenticate input. KRAM verifies the exact request
+        and updates replay/liveness state before endpoint code consumes its payload."""
+    if (req.content_type or '').split(';')[0].lower() != CESR_CONTENT_TYPE:
+        raise falcon.HTTPUnsupportedMediaType()
+    ims = bytearray(req.bounded_stream.read())
+    if not ims:
+        raise falcon.HTTPBadRequest(description='empty query')
+    try:
+        dom = Parser(version=Vrsn_2_0).parseOne(ims=ims, processive=False, local=False)
+        if dom is None or dom.serder is None or ims:
+            raise ValueError('expected exactly one complete signed query')
+        serder = dom.serder
+        if serder.ilk != 'qry' or serder.pvrsn != Vrsn_2_0:
+            raise ValueError('expected a KERI v2 signed query')
+    except Exception as ex:
+        raise falcon.HTTPBadRequest(description=str(ex)) from ex
+    if serder.route not in routes or serder.pre not in allowed:
+        raise falcon.HTTPForbidden(description='requester or route is not authorized')
+    if not ctx.kvy.kramer or not ctx.kvy.kramer.enabled:
+        raise falcon.HTTPServiceUnavailable(description='request authentication unavailable')
+    try:
+        kwa = {key: getattr(dom, key) for key in ('sigers', 'cigars', 'lsgs', 'tsgs', 'sscs', 'ssts')}
+        if ctx.kvy.kramer.intake(serder, kwa) is None:
+            raise ValueError('KRAM rejected request')
+    except Exception as ex:
+        raise falcon.HTTPUnauthorized(description=str(ex)) from ex
+    qry = serder.sad.get('q')
+    if not isinstance(qry, dict):
+        raise falcon.HTTPBadRequest(description='query must be an object')
+    return serder, qry
 
 
 def _snFromQuery(qry):
