@@ -17,7 +17,7 @@ Modeled on [`witness-hk`](https://github.com/keri-foundation/witness-hk):
   TEL data **without** running an observer. Also
   `POST /ingest` for hosting pre-built, KEL-anchored TEL events (e.g.
   presentation registries built in a wallet): JSON
-  `{ "kel": "<CESR>", "tel": "<CESR rip/bup>" }` → verify (`regeventing.vet`)
+  `{ "kel": "<CESR>", "tel": "<CESR rip/bup>" }` → verify with the service-owned Kevery, Parser and native Regery
   and store for observer bulk. This is controller publish, not a wallet status
   query.
 - **External** (default `127.0.0.1:6632`): signed V2 `qry` POST (`r: "tels/bulk"`
@@ -49,8 +49,8 @@ sudo apt-get install libsodium-dev
 
 ## Installation
 
-Published dependency is `keri` from WebOfTrust/keripy. In this umbrella
-checkout, `tool.uv.sources` points at the sibling `../keripy` (editable):
+The maintained service pins `keri` to a complete published `kentbull/keripy`
+commit in `pyproject.toml` and `uv.lock`; it does not depend on a sibling checkout:
 
 ```bash
 cd kf-registrar
@@ -96,3 +96,24 @@ pytest tests/
 ```
 
 On Linux, libsodium install is enough; the `DYLD_*` exports are macOS-only.
+
+## Evidence ownership
+
+The registrar owns one concrete KEL/TEL processing lifecycle, one KRAM pruner
+and its ordinary escrow pass. Request signatures and the explicit observer and
+publisher allowlists remain mandatory; there is no observer freshness contract.
+Public services hold no registry roots.
+
+Authorized publication may explicitly disclose one exact BSQ/BSS opening with a
+BUP. The app verifies its BLID and retains it only after ordinary TEL acceptance.
+If the exact BUP is in the native missing-anchor or out-of-order escrow, one
+app-owned pending-opening table preserves only that canonical proof across
+restart. Acceptance promotes it through `RegistryStore.putOpening`; rejected or
+removed dependencies discard it. Pending proofs are never served. This adds no
+second event queue, acceptance engine or retry service.
+
+Core TEL cloning remains body-only. Full-evidence HTTP export explicitly adds
+openings disclosed by authorized publishers or authored by the local controller;
+ordinary raw intake does not authorize publication. The three-actor publication,
+independent verification and missing-KEL restart tests exercise these boundaries.
+Full service/network and end-to-end qualification remain separate.

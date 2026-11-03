@@ -6,7 +6,6 @@ Controller ingest of pre-built, KEL-anchored TEL events for hosting.
 from collections import defaultdict
 
 from keri import Vrsn_2_0, help
-from keri.acdc.regeventing import requireSupportedEvent
 from keri.core import Parser, SerderACDC, Counter, Codens
 from keri.kering import ValidationError
 
@@ -44,7 +43,6 @@ def groupTelEvents(events):
     """
     groups = defaultdict(lambda: [None, []])
     for serder in events:
-        requireSupportedEvent(serder)
         if serder.ilk == "rip":
             regk = serder.said
             groups[regk][0] = serder
@@ -110,15 +108,15 @@ def allRegistrySaids(store, rgy):
 
 
 class ControllerIngester:
-    """Adapt the original admin JSON contract to shared durable verification.
+    """Adapt the original admin JSON contract to the registrar’s concrete processors.
 
     Bare TEL bodies are framed without changing their signed/self-addressed
-    contents. Rever alone writes accepted ordinals and durable pending evidence.
+    contents. Regery alone writes accepted ordinals and durable pending evidence.
     There is no application-owned pending batch or second acceptance path.
     """
 
     def __init__(self, context):
-        """Retain the caller-owned EvidenceContext used by both HTTP surfaces."""
+        """Retain the caller-owned registrar Context used by both HTTP surfaces."""
         self.context = context
 
     def ingest(self, kel, tel):
@@ -152,4 +150,5 @@ class ControllerIngester:
             None. Callers inspect the shared store for resulting accepted heads.
         """
         self.context.kvy.processEscrows()
-        self.context.rever.processEscrows()
+        self.context.rgy.processEscrows()
+        self.context._reconcileOpenings()

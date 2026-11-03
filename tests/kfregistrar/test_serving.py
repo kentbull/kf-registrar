@@ -26,7 +26,7 @@ def test_controller_grouping_rejects_historical_upd_shape():
     rip = regcept(israid=Diger(ser=b'legacy issuer').qb64)
     legacy = update(rip.said, rip.said, rip.said, 'issued')
     assert SerderACDC(raw=legacy.raw).ilk == 'upd'
-    with pytest.raises(ValidationError, match='retired'):
+    with pytest.raises(ValidationError, match='unsupported TEL event ilk'):
         groupTelEvents([legacy])
 
 
@@ -62,7 +62,8 @@ def _bulkQuery(hab, regk=None, route="tels/bulk", **qextra):
 
 
 def _seal(serder):
-    return dict(s=serder.sad["n"], d=serder.said)
+    return dict(i=serder.said if serder.ilk == "rip" else serder.sad["rd"],
+                s=serder.sad["n"], d=serder.said)
 
 
 def _anchor(hab, *serders):
