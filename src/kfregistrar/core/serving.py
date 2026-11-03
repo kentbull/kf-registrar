@@ -5,20 +5,29 @@ kfregistrar.core.serving module
 Dual HTTP registrar node: localhost controller API and observer-only bulk TEL API.
 """
 
+from dataclasses import asdict
 from pathlib import Path
 from urllib.parse import urlsplit
 
 import falcon
+from hio.base import doing
 from hio.core import http
-from keri import help
+from keri import Vrsn_2_0, help
 from keri.acdc import Registrar, Regery
-from keri.app.evidencing import EvidenceContext
 from keri.app.indirecting import createHttpServer
+from keri.core import (BlindState, Blinder, BoundState, Codens, Counter,
+                       Kevery, Number, NumDex, Parser, SerderACDC)
+from keri.core.kraming import Pruner
 from keri.db.basing import BaserDoer
-from keri.kering import ConfigurationError
+from keri.db.dbing import snKey
+from keri.db.subing import Suber
+from keri.kering import (ConfigurationError, KeriError, ValidationError, MissingSignatureError,
+    MissingWitnessSignatureError, MissingDelegationError, OutOfOrderError,
+    MissingDelegableApprovalError, UnverifiedReceiptError,
+    UnverifiedWitnessReceiptError, UnverifiedTransferableReceiptError)
 
 from kfregistrar.app import httping
-from kfregistrar.core.ingesting import ControllerIngester
+from kfregistrar.core.ingesting import ControllerIngester, hostedRegistrySaids
 
 
 logger = help.ogler.getLogger()
@@ -54,7 +63,7 @@ class StaticConfig:
         return self.data
 
 
-class Context(EvidenceContext):
+class Context(doing.DoDoer):
     """Own shared evidence processors and the registrar's two HTTP surfaces."""
 
     def __init__(self, hby, hab, rgy, observers=None, publishers=None,
@@ -79,7 +88,18 @@ class Context(EvidenceContext):
         self.fullEvidence = fullEvidence
         self.internalApp = None
         self.externalApp = None
-        super().__init__(hby, reger=rgy.baser, config=config)
+        self.hby = hby
+        self.cf = StaticConfig(config if config is not None else DEFAULT_KRAM_CONFIG)
+        policy = self.cf.get().get("kram", {})
+        if policy.get("enabled") is not True or policy.get("denials"):
+            raise ConfigurationError("service requests require enabled KRAM without denial exemptions")
+        self.kvy = Kevery(db=hby.db, cf=self.cf, enableKram=True,
+                          lax=False, local=False)
+        self.store = rgy.store
+        self.pendingOpenings = Suber(db=rgy.baser, subkey="registrar.pending-openings.")
+        self.parser = Parser(kvy=self.kvy, rgy=rgy, local=False, version=Vrsn_2_0)
+        self.pruner = Pruner(self.kvy.kramer, tock=1.0)
+        super().__init__(doers=[self.pruner, doing.doify(self.escrowDo)])
         self.ingester = ControllerIngester(context=self)
 
     def escrowDo(self, tymth=None, tock=0.0, **kwa):
@@ -95,9 +115,182 @@ class Context(EvidenceContext):
         yield tock
         while True:
             self.kvy.processEscrows()
-            self.rever.processEscrows()
             self.rgy.processEscrows()
+            self._reconcileOpenings()
             yield tock
+
+    def ingest(self, raw, *, publish=False):
+        """Process public KEL/TEL evidence using the registrar's concrete owners.
+
+        Only an authorized publisher opts into retaining disclosed openings.
+        Acceptance and dependency persistence belong to Kevery and Regery;
+        this method reports their final outcomes without another pending queue.
+        """
+        ims = bytearray(raw)
+        summary = dict(accepted={}, pending={}, rejected={}, heads={})
+        events, dependencies, disclosures = [], [], []
+        while ims:
+            serder = None
+            try:
+                before = len(ims)
+                dom = self.parser.parseOneBare(ims=ims, processive=False, local=False)
+                if dom is None or dom.serder is None or len(ims) >= before:
+                    raise ValidationError("invalid or incomplete evidence frame")
+                serder = dom.serder
+                if isinstance(serder, SerderACDC):
+                    opening = self._disclosedOpening(serder, dom)
+                    self.rgy.processEvent(serder, sscs=dom.sscs, ssts=dom.ssts)
+                    events.append(serder)
+                    if publish and opening is not None:
+                        disclosures.append((serder, opening))
+                else:
+                    if serder.ilk not in ("icp", "dip", "rot", "drt", "ixn", "rct"):
+                        raise ValidationError("registrar intake accepts only public KEL and native TEL")
+                    self.parser.msgProcess(asdict(dom), kvy=self.kvy, tvy=None,
+                                           exc=None, rvy=None, vry=None)
+            except (MissingSignatureError, MissingWitnessSignatureError,
+                    MissingDelegationError, OutOfOrderError,
+                    MissingDelegableApprovalError, UnverifiedReceiptError,
+                    UnverifiedWitnessReceiptError,
+                    UnverifiedTransferableReceiptError) as ex:
+                if serder is not None and not isinstance(serder, SerderACDC) and self._kelPending(serder):
+                    dependencies.append(serder)
+                    continue
+                summary["rejected"]["stream"] = str(ex)
+                break
+            except Exception as ex:
+                summary["rejected"]["stream"] = str(ex)
+                break
+        self.kvy.processEscrows()
+        self.rgy.processEscrows()
+        for event in dependencies:
+            if self._kelPending(event):
+                key = f"kel:{event.pre}"
+                summary["pending"][key] = summary["pending"].get(key, 0) + 1
+            elif self.hby.db.kels.getLast(keys=event.pre, on=event.sn) != event.said:
+                summary["rejected"][f"kel:{event.pre}:{event.snh}"] = "dependency was not accepted or retained"
+        for event in events:
+            regk = event.said if event.ilk == "rip" else event.sad["rd"]
+            sn = Number(numh=event.sad["n"]).num
+            accepted = self.store.seqSaider(regk, sn)
+            if accepted is not None and accepted.qb64 == event.said:
+                bucket = "accepted"
+                summary["heads"][regk] = self.store.head(regk).qb64
+            else:
+                pending = self._telPending(event)
+                bucket = "pending" if pending else "rejected"
+            summary[bucket][regk] = summary[bucket].get(regk, 0) + 1
+        for event, opening in disclosures:
+            accepted = self.store.seqSaider(event.sad["rd"], Number(numh=event.sad["n"]).num)
+            if accepted is not None and accepted.qb64 == event.said:
+                self.store.putOpening(event.said, opening)
+            elif self._telPending(event):
+                existing = self.pendingOpenings.get(event.said)
+                if existing is not None and existing != opening.qb64:
+                    raise ValidationError("pending public opening is immutable")
+                self.pendingOpenings.put(event.said, opening.qb64)
+        self._reconcileOpenings()
+        return summary
+
+    def _disclosedOpening(self, event, dom):
+        """Validate an explicitly supplied opening before native TEL processing."""
+        from keri.acdc.regeventing import vetBlind
+        supplied = [(BlindState, values) for values in dom.bsqs]
+        supplied.extend((BoundState, values) for values in dom.bsss)
+        if not supplied:
+            return None
+        if event.ilk != "bup" or len(supplied) != 1:
+            raise ValidationError("only a BUP may carry one disclosed opening")
+        clan, values = supplied[0]
+        opening = Blinder(data=clan(*values))
+        vetBlind(opening, blid=event.sad["b"])
+        return opening
+
+    def _telPending(self, event):
+        """Match the exact BUP/RIP in the core's ordinary dependency escrow."""
+        regk = event.said if event.ilk == "rip" else event.sad["rd"]
+        sn = Number(numh=event.sad["n"]).num
+        return any((event.said,) in escrow.get(keys=regk, on=sn)
+                   for escrow in (self.rgy.baser.maes, self.rgy.baser.ooes))
+
+    def _reconcileOpenings(self):
+        """Promote authorized disclosures only after accepted TEL membership.
+
+        Keep exact core dependencies across restart, without a second body
+        queue or retry service. Removed/rejected dependencies lose their proof.
+        """
+        from keri.acdc.regeventing import vetBlind
+        for (said,), raw in list(self.pendingOpenings.getTopItemIter()):
+            event = self.store.event(said)
+            try:
+                if event is None or event.ilk != "bup":
+                    raise ValidationError("pending public opening has no BUP")
+                vetBlind(raw, blid=event.sad["b"])
+                accepted = self.store.seqSaider(event.sad["rd"], Number(numh=event.sad["n"]).num)
+                if accepted is not None and accepted.qb64 == said:
+                    for clan in (BlindState, BoundState):
+                        try:
+                            opening = Blinder(clan=clan, qb64=raw)
+                        except (KeriError, ValueError, TypeError):
+                            continue
+                        if opening.qb64 == raw:
+                            self.store.putOpening(said, opening)
+                            break
+                    else:
+                        raise ValidationError("invalid pending public opening")
+                elif self._telPending(event):
+                    continue
+            except (KeriError, ValueError, TypeError):
+                logger.warning("Discarding invalid pending public opening %s", said)
+            self.pendingOpenings.rem(said)
+
+    def _kelPending(self, event):
+        """Report only exact dependencies retained by the ordinary KEL escrows."""
+        db = self.hby.db
+        if event.ilk != "rct":
+            if any(event.said in escrow.get(keys=event.pre, on=event.sn)
+                   for escrow in (db.pses, db.pwes, db.pdes, db.ooes)):
+                return True
+            return event.said in db.delegables.get(keys=snKey(event.pre, event.sn))
+        if any(said == event.said for said, _ in db.uwes.get(keys=event.pre, on=event.sn)):
+            return True
+        receipts = db.ures.get(keys=(event.pre, Number(num=event.sn, code=NumDex.Huge).qb64))
+        receipts += db.vres.get(keys=snKey(event.pre, event.sn))
+        return any(receipt[0].qb64 == event.said for receipt in receipts)
+
+    def registries(self):
+        """List hosted registries with an accepted head."""
+        return sorted(hostedRegistrySaids(self.store))
+
+    def clone(self, regks=None, sn=0):
+        """Export accepted KEL/TEL and openings explicitly disclosed here.
+
+        Core TEL cloning remains body-only. This service attaches held material
+        from authorized publication or its own controller's issuance only.
+        """
+        kel, tel, issuers = bytearray(), bytearray(), set()
+        for regk in self.registries() if regks is None else regks:
+            rip = self.store.seqEvent(regk, 0)
+            if rip is None:
+                raise KeyError(regk)
+            issuer = rip.sad["i"]
+            if issuer not in issuers:
+                kel.extend(b"".join(self.hby.db.cloneDelegation(self.hby.kevers[issuer], gvrsn=Vrsn_2_0)))
+                kel.extend(b"".join(self.hby.db.clonePreIter(pre=issuer, gvrsn=Vrsn_2_0)))
+                issuers.add(issuer)
+            for raw in self.store.cloneTelIter(regk, sn=sn):
+                event = SerderACDC(raw=raw)
+                opening = self.store.opening(event.said) if event.ilk == "bup" else None
+                attachments = Blinder.enclose([opening]) if opening is not None else b""
+                tel.extend(event.raw)
+                tel.extend(Counter.enclose(qb64=attachments, code=Codens.AttachmentGroup,
+                                          version=Vrsn_2_0))
+        return bytes(kel + tel)
+
+    def close(self):
+        """Close owned registry state after doer cancellation; Habery is borrowed."""
+        if self.store.opened:
+            self.rgy.close()
 
 
 def osetOf(values):
