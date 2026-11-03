@@ -30,7 +30,7 @@ def test_installed_cli_runs_its_own_dual_http_service(tmp_path, scenario):
     """Reopen each Keeper mode through the installed service and probe both APIs.
 
     Parameters:
-        tmp_path: private subprocess home within the test-owned runtime.
+        tmp_path: private logs; the unique base owns this test's store namespace.
         scenario: new, encrypted, or clear Keeper with valid/absent/irrelevant passcode.
     """
     internal, external = port(), port()
@@ -47,7 +47,7 @@ def test_installed_cli_runs_its_own_dual_http_service(tmp_path, scenario):
             before = (hab.pre, hby.ks.gbls.get("aeid"), hby.ks.gbls.get("salt"))
         finally:
             hby.close()
-    env = {**os.environ, "HOME": str(tmp_path)}
+    env = dict(os.environ)
     env.pop("KLI_KEYSTORE_PASSCODE", None)
     if scenario in ("fresh", "encrypted-existing"):
         env["KLI_KEYSTORE_PASSCODE"] = PASSCODE
