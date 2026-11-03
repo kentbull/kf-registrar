@@ -193,14 +193,14 @@ def runRegistrar(args, expire=0.0):
         if aeid is None:
             hby = Habery(name=args.name, base=args.base, bran=args.bran, cf=cf, version=Vrsn_2_0)
         else:
-            if not args.bran and noPrompt:
+            if aeid and not args.bran and noPrompt:
                 raise AuthError(
                     f"passcode required for keystore {args.name!r} but prompting is disabled."
                 )
             hby = setupHby(
                 name=args.name,
                 base=args.base,
-                bran=args.bran,
+                bran=args.bran if aeid else None,
                 cf=cf,
                 noPrompt=noPrompt,
                 version=Vrsn_2_0,
