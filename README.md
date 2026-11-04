@@ -5,8 +5,8 @@ governs ACDC transaction event logs (TELs) and serves them in bulk to
 observers only (see kf-observer).
 
 It is the ACDC counterpart of a witness. Witnesses serve KELs; this process
-serves TELs. Wallets and verifiers do not communicate directly with this service, they 
-should talk to an observer.
+serves TELs. Wallets and verifiers obtain TEL status from an observer. Explicitly
+allowlisted publishers may submit public registry evidence to the registrar.
 
 ## Dual HTTP
 
@@ -86,6 +86,27 @@ kf-registrar start \
 
 Repeat `--observer` for each allow-listed observer AID, or list them in
 `scripts/keri/cf/kf-registrar.json` under `kf-registrar.observers`.
+
+### Publish a registry snapshot
+
+Bootstrap a separate publisher's signed KEL into the registrar with `--kel` and
+allow its AID with `--publisher`. The publisher command opens only that existing
+publisher keystore; it does not open the issuer's live store:
+
+```bash
+kf-registrar publish --name publisher --base operations --alias publisher \
+  --input issued.cesr --registry <registry-said> \
+  --url https://registrar.example --ca /path/to/ca.pem --timeout 20
+```
+
+Use `--passcode` or `KLI_KEYSTORE_PASSCODE` for an encrypted publisher. An IP URL
+also requires `--certedhost` with the explicit certificate hostname. Redirects
+are refused. The input is read once as a complete mixed CESR snapshot: only
+top-level public KEL support and the selected registry's complete RIP/BUP history
+are published. Credential/IPEX disclosure, arbitrary held openings and custody
+are excluded. Incomplete or ambiguous selected history fails before transmission.
+Success requires the registrar's exact accepted head to match the input snapshot,
+with no pending or rejected evidence; it is not a claim about newer remote state.
 
 ## Tests
 
