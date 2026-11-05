@@ -90,6 +90,9 @@ def registrar(data, publisher):
                     with urlopen(f'https://localhost:{external}/health',
                             context=ssl.create_default_context(cafile=str(data.cert)), timeout=.3) as response:
                         assert response.status == 200
+                    # TLS belongs to the public API; enrollment stays on private HTTP.
+                    with urlopen(f'http://127.0.0.1:{internal}/health', timeout=.3) as response:
+                        assert response.status == 200
                     break
                 except OSError:
                     assert time.monotonic() < deadline, log.read_text()

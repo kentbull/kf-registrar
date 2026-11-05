@@ -56,7 +56,7 @@ parser.add_argument(
     "-bh",
     action="store",
     default="127.0.0.1",
-    help="Local host IP address the internal HTTP server listens on. Default is 127.0.0.1.",
+    help="Loopback IP address for trusted administration. Default is 127.0.0.1; remote binds are refused.",
 )
 parser.add_argument(
     "-n",

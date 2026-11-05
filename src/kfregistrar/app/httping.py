@@ -24,6 +24,55 @@ BULK_ROUTES = ("tels/bulk", "regs")
 WALLET_ROUTES = ("tels", "tsn", "logs", "ksn", "mbx")
 
 
+class AccountEnd:
+    """Trusted boot administration of durable publisher/observer enrollment."""
+
+    def __init__(self, ctx):
+        """Borrow the service context; this route belongs only on its loopback API."""
+        self.ctx = ctx
+
+    @staticmethod
+    def _aid(aid):
+        """Require one complete public identifier, not a prefix with trailing bytes."""
+        try:
+            if Prefixer(qb64=aid).qb64 != aid:
+                raise ValueError("invalid AID")
+        except Exception as ex:
+            raise falcon.HTTPBadRequest(description="invalid account AID") from ex
+
+    def on_get(self, _req, rep, aid):
+        """Report only dynamically enrolled permissions and the actual service AID."""
+        self._aid(aid)
+        account = self.ctx.accounts.get(keys=(aid,))
+        if account is None:
+            raise falcon.HTTPNotFound(description="account is not enrolled")
+        rep.media = dict(aid=aid, roles=account.roles, service=self.ctx.hab.pre)
+
+    def on_put(self, req, rep, aid):
+        """Replace one account's roles after verifying its supplied public KEL."""
+        self._aid(aid)
+        body = req.get_media()
+        if not isinstance(body, dict) or set(body) != {"roles", "kel"}:
+            raise falcon.HTTPBadRequest(description="roles and public KEL are required")
+        roles, kel = body["roles"], body["kel"]
+        if (not isinstance(roles, list) or not roles
+                or any(role not in ("publisher", "observer") for role in roles)
+                or len(set(roles)) != len(roles)
+                or not isinstance(kel, str) or not kel):
+            raise falcon.HTTPBadRequest(description="invalid service roles or KEL")
+        try:
+            self.ctx.enroll(aid, roles, kel.encode("utf-8"))
+        except (UnicodeError, ValidationError, ValueError) as ex:
+            raise falcon.HTTPBadRequest(description=str(ex)) from ex
+        rep.media = dict(aid=aid, roles=roles, service=self.ctx.hab.pre)
+
+    def on_delete(self, _req, rep, aid):
+        """Idempotently revoke dynamic roles without deleting public evidence."""
+        self._aid(aid)
+        self.ctx.revoke(aid)
+        rep.status = falcon.HTTP_204
+
+
 def _snFromQuery(qry):
     """Parse an optional sequence number from a query block."""
     sn = qry.get("sn", 0)

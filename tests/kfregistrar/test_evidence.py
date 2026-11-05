@@ -13,9 +13,9 @@ from keri.app.habbing import openHby
 from keri.app.httping import CESR_CONTENT_TYPE
 from keri.core import Blinder, Counter, Codens, Diger, Number, Parser, SerderACDC, query
 from keri.help import helping
-from keri.kering import Kinds
+from keri.kering import ConfigurationError, Kinds
 
-from kfregistrar.core.serving import Context, makeContext, _corsApp, loadExternalEnds
+from kfregistrar.core.serving import Context, makeContext, _corsApp, loadExternalEnds, loadInternalEnds, setup
 
 
 def framed(*items):
@@ -54,6 +54,75 @@ def issued(hab, kind=Kinds.json, bound=False):
     bup = blindate(rip.said, rip.said, opening.said, kind=kind)
     hab.interact(data=[dict(i=rip.said, s=e.sad["n"], d=e.said) for e in (rip, bup)])
     return rip, bup, opening
+
+
+def test_account_enrollment_persists_and_revokes_without_removing_static_roles(tmp_path):
+    """Actual signed publication requires durable enrollment, including after reopen."""
+    with (openHby(name="enrolled-publisher", version=Vrsn_2_0) as issuer,
+          openHby(name="enrollment-host", version=Vrsn_2_0) as host):
+        publisher = issuer.makeHab("publisher")
+        hab = host.makeHab("registrar")
+        rip, bup, opening = issued(publisher)
+        path = f"/accounts/{publisher.pre}"
+        kel = publisher.replay(gvrsn=Vrsn_2_0).decode()
+        attributes = {"stream": framed(rip, (bup, opening)).decode()}
+        headers = {"Content-Type": CESR_CONTENT_TYPE}
+        baser = RegBaser(name="enrollment", headDirPath=str(tmp_path), temp=False)
+        first = Context(host, hab, Regery(host, baser=baser), observers=[publisher.pre])
+        inner, outer = _corsApp(), _corsApp()
+        loadInternalEnds(inner, first)
+        loadExternalEnds(outer, first)
+        admin, public = testing.TestClient(inner), testing.TestClient(outer)
+        try:
+            # Startup denies publication; enrollment must establish real public identity evidence.
+            with pytest.raises(ConfigurationError, match="loopback"):
+                setup(host, bootHost="0.0.0.0")
+            assert public.simulate_post("/ingest", headers=headers,
+                body=signedQuery(publisher, "tels/publish", attributes)).status_code == 403
+            assert admin.simulate_put(path, json={"roles": ["publisher"],
+                "kel": framed(rip).decode()}).status_code == 400
+            assert first.store.event(rip.said) is None
+            assert admin.simulate_get(path).status_code == 404
+            assert admin.simulate_put(path, json={"roles": ["publisher"],
+                "kel": framed(publisher.kever.serder).decode()}).status_code == 409
+            assert admin.simulate_get(path).status_code == 404
+            enrolled = admin.simulate_put(path, json={"roles": ["publisher"], "kel": kel})
+            assert enrolled.status_code == 200
+            assert enrolled.json == dict(aid=publisher.pre, roles=["publisher"], service=hab.pre)
+            published = public.simulate_post("/ingest", headers=headers,
+                body=signedQuery(publisher, "tels/publish", attributes))
+            assert published.status_code == 200
+            assert published.json["heads"] == {rip.said: bup.said}
+            assert host.habByPre(publisher.pre) is None
+        finally:
+            first.close()
+        # Reopen the permission-bearing registry store and restore the context's live allowlists.
+        baser.reopen()
+        second = Context(host, hab, Regery(host, baser=baser),
+                         observers=[publisher.pre], publishers=[hab.pre])
+        inner, outer = _corsApp(), _corsApp()
+        loadInternalEnds(inner, second)
+        loadExternalEnds(outer, second)
+        admin, public = testing.TestClient(inner), testing.TestClient(outer)
+        try:
+            assert admin.simulate_get(path).json == enrolled.json
+            assert public.simulate_post("/ingest", headers=headers,
+                body=signedQuery(publisher, "tels/publish", attributes)).status_code == 200
+            # Replacement and revocation remove dynamic roles while preserving operator source access.
+            assert admin.simulate_put(path, json={"roles": ["observer"], "kel": kel}).status_code == 200
+            assert publisher.pre not in second.publishers
+            assert admin.simulate_delete(path).status_code == 204
+            assert admin.simulate_delete(path).status_code == 204
+            assert admin.simulate_get(path).status_code == 404
+            assert public.simulate_post("/ingest", headers=headers,
+                body=signedQuery(publisher, "tels/publish", attributes)).status_code == 403
+            assert public.simulate_post("/", headers=headers,
+                body=signedQuery(publisher, "tels/bulk", {"i": rip.said})).status_code == 200
+            assert hab.pre in second.publishers
+            assert second.store.headEvent(rip.said).said == bup.said
+            assert second.store.opening(bup.said).qb64 == opening.qb64
+        finally:
+            second.close()
 
 
 @pytest.mark.parametrize("kind", [Kinds.json, Kinds.cesr])

@@ -28,6 +28,29 @@ There is no registrar pool, no TEL receipts, and no wallet-shaped
 `GET /query?typ=tel`. Wallets and verifiers must not query this service for
 TEL status; they talk to an observer.
 
+### Account enrollment
+
+The trusted internal listener also provides `PUT /accounts/{aid}` with JSON
+`{"roles": ["publisher"], "kel": "<public CESR KEL>"}`. Roles are `publisher`
+and/or `observer`; PUT replaces that account's dynamic roles. KERIpy verifies
+the supplied KEL and requires an accepted account AID before permissions are
+persisted. Enrollment accepts no TEL, credential, private key or local habitat.
+
+PUT and `GET /accounts/{aid}` return `{aid, roles, service}`, where `service` is
+the registrar's AID. `DELETE /accounts/{aid}` returns 204 idempotently and revokes
+dynamic permissions while retaining public evidence and any operator-configured
+`--publisher`/`--observer` permissions. The allowlist survives service restart in
+the existing registry database. External `/ingest` is always available, denying
+publishers until configured or enrolled; every request still needs its ordinary
+KERI authentication.
+
+This private API trusts its administrator, such as the configured kf-boot
+backend client. `--boothost` now requires a literal loopback IP (`localhost`
+selects `127.0.0.1`); remote and wildcard binds are refused before service setup.
+It uses plain HTTP on loopback, independently of the public listener's TLS
+configuration. Keep this administration listener private. A public service URL
+alone does not activate an account.
+
 ## Requirements
 
 - Python >= 3.14
