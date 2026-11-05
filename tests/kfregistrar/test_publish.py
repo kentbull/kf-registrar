@@ -152,3 +152,20 @@ def test_installed_publish_refuses_an_authenticated_but_unauthorized_publisher(p
         result = publish(data, url)
         assert result.returncode != 0
         assert 'HTTP 403' in result.stdout, result.stdout + result.stderr
+
+
+def test_publish_client_uses_only_configured_ca(publication):
+    from kfregistrar.app.cli.commands.publish import publish as publication_do
+    data = publication
+    args = SimpleNamespace(name='publisher', base=data.base, bran=PASSCODE, alias='publisher',
+        input=str(data.snapshot), registry=data.rip.said, url='https://127.0.0.1:1/',
+        ca=str(data.cert), certedhost='localhost', timeout=1)
+    operation = publication_do(tymth=lambda: 0.0, args=args)
+    try:
+        next(operation)
+        next(operation)
+        context = operation.gi_frame.f_locals['client'].connector.context
+        assert context.get_ca_certs(binary_form=True) == [ssl.PEM_cert_to_DER_cert(data.cert.read_text())]
+        assert context.check_hostname and context.verify_mode == ssl.CERT_REQUIRED
+    finally:
+        operation.close()

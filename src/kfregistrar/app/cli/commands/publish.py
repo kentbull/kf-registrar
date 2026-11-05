@@ -4,6 +4,7 @@ import ipaddress
 import json
 import math
 import os
+import ssl
 from pathlib import Path
 from time import monotonic
 from urllib.parse import urlsplit
@@ -117,8 +118,10 @@ def publish(tymth, tock=0.0, *, args, **kwa):
             query={'stream': stream.decode()}, stamp=helping.nowIso8601(), version=Vrsn_2_0)
         signed = hab.endorse(message, last=True, framed=False, gvrsn=Vrsn_2_0)
 
+        ca = str(Path(args.ca).expanduser().resolve())
+        # HIO also needs cafilepath to avoid reloading system roots.
         client = http.clienting.Client(scheme='https', hostname=target.hostname,
-            port=target.port or 443, cafilepath=str(Path(args.ca).expanduser().resolve()),
+            port=target.port or 443, context=ssl.create_default_context(cafile=ca), cafilepath=ca,
             certedhost=args.certedhost, redirectable=False)
         transport = doing.DoDoer(doers=[http.clienting.ClientDoer(client)], tymth=tymth)
         transport.enter()
