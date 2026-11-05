@@ -332,8 +332,12 @@ def test_controller_ingest_pending_until_kel_anchors():
                 ctx.rgy.close()
 
 
-def test_external_api_has_no_ingest_route():
-    """Controller ingest is admin-only; external API has no write path."""
+def test_external_ingest_refuses_unsigned_controller_payload():
+    """External ingest accepts signed V2 publication queries only.
+
+    The controller's JSON ingest shape stays admin-only; signed publisher
+    authorization is covered in test_evidence.py.
+    """
     with openHby(name="kf-reg-no-ingest", base="test", temp=True, version=Vrsn_2_0) as hby:
         hby.makeHab(name="registrar")
         ctx = makeContext(hby=hby, alias="registrar", observers=[])
@@ -343,6 +347,6 @@ def test_external_api_has_no_ingest_route():
                 "/ingest",
                 json=dict(kel="", tel=""),
             )
-            assert response.status == falcon.HTTP_404
+            assert response.status == falcon.HTTP_406
         finally:
             ctx.rgy.close()
