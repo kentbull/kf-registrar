@@ -5,7 +5,8 @@ kfregistrar.core.serving module
 Dual HTTP registrar node: localhost controller API and observer-only bulk TEL API.
 """
 
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
+from ipaddress import ip_address
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -16,10 +17,11 @@ from keri import Vrsn_2_0, help
 from keri.acdc import Registrar, Regery
 from keri.app.indirecting import createHttpServer
 from keri.core import (BlindState, Blinder, BoundState, Codens, Counter,
-                       Kevery, Number, NumDex, Parser, SerderACDC)
+                       Kevery, Number, NumDex, Parser, SerderACDC, SerderKERI)
 from keri.core.kraming import Pruner
 from keri.db.basing import BaserDoer
 from keri.db.dbing import snKey
+from keri.db.koming import Komer
 from keri.db.subing import Suber
 from keri.kering import (ConfigurationError, KeriError, ValidationError, MissingSignatureError,
     MissingWitnessSignatureError, MissingDelegationError, OutOfOrderError,
@@ -63,6 +65,13 @@ class StaticConfig:
         return self.data
 
 
+@dataclass
+class AccountAccess:
+    """Private enrollment decision; public identity evidence stays in the Habery."""
+    aid: str
+    roles: list[str]
+
+
 class Context(doing.DoDoer):
     """Own shared evidence processors and the registrar's two HTTP surfaces."""
 
@@ -83,8 +92,10 @@ class Context(doing.DoDoer):
         self.hab = hab
         self.rgy = rgy
         self.registrar = Registrar(rgy=rgy)
-        self.observers = osetOf(observers)
-        self.publishers = osetOf(publishers)
+        self.staticObservers = osetOf(observers)
+        self.staticPublishers = osetOf(publishers)
+        self.observers = set(self.staticObservers)
+        self.publishers = set(self.staticPublishers)
         self.fullEvidence = fullEvidence
         self.internalApp = None
         self.externalApp = None
@@ -96,11 +107,53 @@ class Context(doing.DoDoer):
         self.kvy = Kevery(db=hby.db, cf=self.cf, enableKram=True,
                           lax=False, local=False)
         self.store = rgy.store
+        self.accounts = Komer(db=rgy.baser, subkey="registrar.accounts.", klas=AccountAccess)
+        for keys, account in self.accounts.getTopItemIter():
+            if (keys != (account.aid,) or account.aid not in hby.kevers
+                    or not account.roles or len(set(account.roles)) != len(account.roles)
+                    or not set(account.roles) <= {"publisher", "observer"}):
+                raise ConfigurationError("registrar enrollment lacks valid roles or accepted account KEL")
+            self._applyAccount(account.aid, account.roles)
         self.pendingOpenings = Suber(db=rgy.baser, subkey="registrar.pending-openings.")
         self.parser = Parser(kvy=self.kvy, rgy=rgy, local=False, version=Vrsn_2_0)
         self.pruner = Pruner(self.kvy.kramer, tock=1.0)
         super().__init__(doers=[self.pruner, doing.doify(self.escrowDo)])
         self.ingester = ControllerIngester(context=self)
+
+    def _applyAccount(self, aid, roles):
+        """Publish effective permissions without revoking operator-configured access."""
+        for role, allowed, configured in (
+                ("publisher", self.publishers, self.staticPublishers),
+                ("observer", self.observers, self.staticObservers)):
+            if role in roles or aid in configured:
+                allowed.add(aid)
+            else:
+                allowed.discard(aid)
+
+    def enroll(self, aid, roles, raw):
+        """Verify KEL-only evidence, then commit and publish the private role decision."""
+        ims = bytearray(raw)
+        if not ims:
+            raise ValidationError("public KEL evidence is required")
+        while ims:
+            before = len(ims)
+            try:
+                dom = self.parser.parseOneBare(ims=ims, processive=False, local=False)
+            except KeriError as ex:
+                raise ValidationError("invalid public KEL framing") from ex
+            if (dom is None or len(ims) >= before or not isinstance(dom.serder, SerderKERI)
+                    or dom.serder.ilk not in ("icp", "dip", "rot", "drt", "ixn", "rct")):
+                raise ValidationError("enrollment accepts only public KEL evidence")
+        result = self.ingest(raw)
+        if result["rejected"] or result["pending"] or aid not in self.hby.kevers:
+            raise falcon.HTTPConflict(description="account KEL is refused or incomplete")
+        self.accounts.pin(keys=(aid,), val=AccountAccess(aid=aid, roles=list(roles)))
+        self._applyAccount(aid, roles)
+
+    def revoke(self, aid):
+        """Remove dynamic access before publishing the remaining configured policy."""
+        self.accounts.rem(keys=(aid,))
+        self._applyAccount(aid, ())
 
     def escrowDo(self, tymth=None, tock=0.0, **kwa):
         """Retry local issuance and remote evidence using the scheduler's clock.
@@ -356,6 +409,7 @@ def loadInternalEnds(app, ctx):
     app.add_route("/registries/{regk}", httping.RegistryResourceEnd(ctx))
     app.add_route("/registries/{regk}/updates", httping.RegistryUpdateEnd(ctx))
     app.add_route("/ingest", httping.IngestEnd(ctx))
+    app.add_route("/accounts/{aid}", httping.AccountEnd(ctx))
 
 
 def loadExternalEnds(app, ctx):
@@ -363,8 +417,7 @@ def loadExternalEnds(app, ctx):
     app.add_route("/health", httping.HealthEnd())
     app.add_route("/", httping.BulkQueryEnd(ctx))
     app.add_route("/query", httping.QueryRejectEnd())
-    if ctx.publishers:
-        app.add_route("/ingest", httping.PublishEnd(ctx))
+    app.add_route("/ingest", httping.PublishEnd(ctx))
 
 
 def makeContext(hby, alias="registrar", observers=None, publishers=None,
@@ -427,7 +480,7 @@ def setup(
     Parameters:
         hby (Habery): habitat environment that owns the issuer identifier.
         alias (str): habitat name for the registrar/issuer controller.
-        bootHost (str): bind address for the internal controller API.
+        bootHost (str): loopback bind address for the trusted internal controller API.
         bootPort (int): port for the internal controller API.
         host (str): bind address for the observer-facing API.
         port (int): port for the observer-facing API.
@@ -436,11 +489,20 @@ def setup(
         publishers: optional AIDs authorized for signed external publication.
         fullEvidence: return supporting KEL with framed TEL on bulk queries.
         kel: iterable of signed KEL bootstrap paths, verified before binding.
-        keypath, certpath, cafilepath: optional TLS material for both servers.
+        keypath, certpath, cafilepath: optional TLS material for the public server.
+            The private administration server uses HTTP on loopback only.
 
     Returns:
         list: HIO doers including the registrar Context and both HTTP servers.
     """
+    if bootHost == "localhost":
+        bootHost = "127.0.0.1"
+    try:
+        loopback = ip_address(bootHost).is_loopback
+    except ValueError:
+        loopback = False
+    if not loopback:
+        raise ConfigurationError("registrar account administration requires a loopback boot host")
     ctx = makeContext(hby=hby, alias=alias, observers=observers,
                       publishers=publishers, fullEvidence=fullEvidence, **kwa)
     try:
@@ -460,9 +522,6 @@ def setup(
         host=bootHost,
         port=bootPort,
         app=ctx.internalApp,
-        keypath=keypath,
-        certpath=certpath,
-        cafilepath=cafilepath,
     )
     if not bootServer.reopen():
         raise RuntimeError(f"cannot create internal HTTP server on port {bootPort}")
