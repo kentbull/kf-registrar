@@ -151,4 +151,3 @@ class ControllerIngester:
         """
         self.context.kvy.processEscrows()
         self.context.rgy.processEscrows()
-        self.context._reconcileOpenings()
