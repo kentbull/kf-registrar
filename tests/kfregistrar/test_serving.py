@@ -281,7 +281,6 @@ def test_controller_ingest_pending_until_kel_anchors():
             stamp=STAMP1,
         )
         tel = _telStream(rip, bup).decode("utf-8")
-        telBytes = _telStream(rip, bup)
         regk = rip.said
 
         with openHby(name="kf-reg-pend", base="test", temp=True, version=Vrsn_2_0) as hby:
