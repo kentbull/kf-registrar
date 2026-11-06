@@ -76,14 +76,13 @@ class Context(doing.DoDoer):
     """Own shared evidence processors and the registrar's two HTTP surfaces."""
 
     def __init__(self, hby, hab, rgy, observers=None, publishers=None,
-                 fullEvidence=False, config=None):
+                 config=None):
         """Bind application policy to a single KEL and ACDC v2 registry verification runtime.
 
         Parameters:
             hby, hab: caller-owned habitat environment and local controller.
             rgy: local registry manager sharing the evidence backend.
             observers, publishers: AIDs authorized to read or publish evidence.
-            fullEvidence: return supporting KEL and framed TEL on bulk reads.
             config: enabled KRAM policy; disabled authentication fails closed.
 
         The context owns one pruner and one escrow loop. Call close only after
@@ -96,7 +95,6 @@ class Context(doing.DoDoer):
         self.staticPublishers = osetOf(publishers)
         self.observers = set(self.staticObservers)
         self.publishers = set(self.staticPublishers)
-        self.fullEvidence = fullEvidence
         self.internalApp = None
         self.externalApp = None
         self.hby = hby
@@ -421,7 +419,7 @@ def loadExternalEnds(app, ctx):
 
 
 def makeContext(hby, alias="registrar", observers=None, publishers=None,
-                fullEvidence=False, **kwa):
+                **kwa):
     """Build the registrar Context and Falcon apps without binding sockets.
 
     Parameters:
@@ -430,7 +428,6 @@ def makeContext(hby, alias="registrar", observers=None, publishers=None,
         observers (list[str] | None): observer AIDs allowed on the external API.
             Combined with any ``observers`` list in Habery config.
         publishers: optional AIDs allowed to publish signed public evidence.
-        fullEvidence: opt into KEL plus framed TEL responses for independent verification.
 
     Returns:
         Context: registrar node with internalApp and externalApp attached.
@@ -443,7 +440,7 @@ def makeContext(hby, alias="registrar", observers=None, publishers=None,
 
     obs = osetOf(observers) | osetOf(_observersFromConfig(hby.cf))
     ctx = Context(hby=hby, hab=hab, rgy=rgy, observers=obs,
-                  publishers=publishers, fullEvidence=fullEvidence,
+                  publishers=publishers,
                   config=_configWithKram(hby.cf).get())
 
     internalApp = _corsApp()
@@ -465,7 +462,6 @@ def setup(
     port=6632,
     observers=None,
     publishers=None,
-    fullEvidence=False,
     kel=(),
     keypath=None,
     certpath=None,
@@ -487,7 +483,6 @@ def setup(
         observers (list[str] | None): observer AIDs allowed on the external API.
             Combined with any ``observers`` list in Habery config.
         publishers: optional AIDs authorized for signed external publication.
-        fullEvidence: return supporting KEL with framed TEL on bulk queries.
         kel: iterable of signed KEL bootstrap paths, verified before binding.
         keypath, certpath, cafilepath: optional TLS material for the public server.
             The private administration server uses HTTP on loopback only.
@@ -504,7 +499,7 @@ def setup(
     if not loopback:
         raise ConfigurationError("registrar account administration requires a loopback boot host")
     ctx = makeContext(hby=hby, alias=alias, observers=observers,
-                      publishers=publishers, fullEvidence=fullEvidence, **kwa)
+                      publishers=publishers, **kwa)
     try:
         for path in kel:
             result = ctx.ingest(Path(path).read_bytes())

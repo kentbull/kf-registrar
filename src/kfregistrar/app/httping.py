@@ -98,17 +98,6 @@ def _registrySaids(qry, store, rgy):
     raise falcon.HTTPBadRequest(description="registry scope must be an AID or list of AIDs")
 
 
-def cloneRegs(store, regks, sn=0):
-    """Concatenate accepted TEL CESR for one or more registry SAIDs."""
-    stream = bytearray()
-    for regk in regks:
-        accepted = [SerderACDC(raw=raw) for raw in store.cloneTelIter(regk)]
-        for event in accepted:
-            if Number(numh=event.sad['n']).num >= sn:
-                stream.extend(event.raw)
-    return bytes(stream)
-
-
 def _loadQueryStream(req):
     """Read a signed qry as CESR-over-HTTP JSON+attachment or a raw CESR stream."""
     ctype = (req.content_type or "").split(";")[0].strip().lower()
@@ -393,14 +382,7 @@ class BulkQueryEnd:
             )
 
         try:
-            if self.ctx.fullEvidence:
-                data = self.ctx.clone(regks, sn=sn)
-            else:
-                data = cloneRegs(
-                    store,
-                    [regk for regk in regks if knownRegistry(store, self.ctx.rgy, regk)],
-                    sn=sn,
-                )
+            data = self.ctx.clone(regks, sn=sn)
         except ValidationError as ex:
             raise falcon.HTTPUnprocessableEntity(
                 description='registry history is outside the supported evidence profile') from ex

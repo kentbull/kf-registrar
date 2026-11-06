@@ -107,8 +107,6 @@ parser.add_argument(
 )
 parser.add_argument("--publisher", action="append", default=[],
                     help="AID allowed to publish signed public evidence. Repeatable.")
-parser.add_argument("--full-evidence", action="store_true",
-                    help="Return supporting KEL and framed TEL to bulk observers.")
 parser.add_argument("--kel", action="append", default=[],
                     help="Signed public KEL bootstrap file. Repeatable.")
 parser.add_argument(
@@ -218,7 +216,6 @@ def runRegistrar(args, expire=0.0):
                 port=int(args.http),
                 observers=args.observers,
                 publishers=args.publisher,
-                fullEvidence=args.full_evidence,
                 kel=args.kel,
                 keypath=args.keypath,
                 certpath=args.certpath,

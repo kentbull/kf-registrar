@@ -156,8 +156,8 @@ restart. Acceptance promotes it through `RegistryStore.putOpening`; rejected or
 removed dependencies discard it. Pending proofs are never served. This adds no
 second event queue, acceptance engine or retry service.
 
-Core TEL cloning remains body-only. Full-evidence HTTP export explicitly adds
-openings disclosed by authorized publishers or authored by the local controller;
+Core TEL cloning remains body-only. The registrar's HTTP export is always the
+full-evidence form and explicitly adds openings disclosed by authorized publishers or authored by the local controller;
 ordinary raw intake does not authorize publication. The three-actor publication,
 independent verification and missing-KEL restart tests exercise these boundaries.
 Full service/network and end-to-end qualification remain separate.
