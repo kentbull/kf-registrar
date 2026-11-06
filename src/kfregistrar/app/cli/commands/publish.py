@@ -46,7 +46,7 @@ def publicSnapshot(raw, registry):
     """Select public top-level evidence without importing disclosure or custody.
 
     Parsing consumes the whole snapshot before any signing or network request.
-    Only native public authentication/source attachments survive selection.
+    Only v2 CESR public authentication/source attachments survive selection.
     """
     remaining, stream, slots = bytearray(raw), bytearray(), {}
     parser = Parser(version=Vrsn_2_0)

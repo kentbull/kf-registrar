@@ -132,7 +132,7 @@ def test_installed_publish_selects_public_evidence_and_exact_accepted_head(publi
         accepted = json.loads(result.stdout)
         assert accepted['heads'] == {data.rip.said: data.bup.said}
         assert not accepted['pending'] and not accepted['rejected']
-    # Independent persisted native evidence contains no credential or opening.
+    # Independent persisted v2 evidence contains no credential or opening.
     with closing(Habery(name='registrar', base=data.base, bran=PASSCODE, version=Vrsn_2_0)) as hby:
         rgy = Regery(hby=hby, name='registrar', base=data.base, temp=False)
         try:
