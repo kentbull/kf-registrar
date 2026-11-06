@@ -307,12 +307,12 @@ def test_signed_pending_publication_retains_only_authorized_disclosure_after_reo
         denied = client.simulate_post("/ingest", headers=headers,
             body=signedQuery(observer, "tels/publish", {"stream": evidence}))
         assert denied.status_code == 403
-        assert first.pendingOpenings.get(bup.said) is None
+        assert first.store.pendingOpening(bup.said) is None
         pending = client.simulate_post("/ingest", headers=headers,
             body=signedQuery(publisher, "tels/publish", {"stream": evidence}))
         assert pending.status_code == 202
         assert pending.json["pending"][rip.said] == 2
-        assert first.pendingOpenings.get(bup.said) == opening.qb64
+        assert first.store.pendingOpening(bup.said).qb64 == opening.qb64
         assert first.store.opening(bup.said) is None
         assert first.registries() == []
         first.close()
@@ -326,7 +326,7 @@ def test_signed_pending_publication_retains_only_authorized_disclosure_after_reo
             assert not second.ingest(publisher.replay(gvrsn=Vrsn_2_0))["rejected"]
             assert second.store.headEvent(rip.said).said == bup.said
             assert second.store.opening(bup.said).qb64 == opening.qb64
-            assert second.pendingOpenings.get(bup.said) is None
+            assert second.store.pendingOpening(bup.said) is None
             response = testing.TestClient(second.externalApp).simulate_post(
                 "/", headers=headers,
                 body=signedQuery(observer, "tels/bulk", {"i": rip.said}))
@@ -350,7 +350,7 @@ def test_unpublished_intake_verifies_tel_without_retaining_public_opening():
             assert result["accepted"][rip.said] == 2
             assert ctx.store.headEvent(rip.said).said == bup.said
             assert ctx.store.opening(bup.said) is None
-            assert ctx.pendingOpenings.get(bup.said) is None
+            assert ctx.store.pendingOpening(bup.said) is None
             assert opening.qb64b not in ctx.clone([rip.said])
             assert ctx.ingest(framed((bup, opening)), publish=True)["accepted"][rip.said] == 1
             assert ctx.store.opening(bup.said).qb64 == opening.qb64
@@ -375,12 +375,12 @@ def test_pending_public_opening_follows_core_sibling_arbitration():
             pending = ctx.ingest(framed(rip, (rival, rivalOpening),
                                        (winner, opening)), publish=True)
             assert pending["pending"][rip.said] == 3
-            assert ctx.pendingOpenings.get(rival.said) == rivalOpening.qb64
-            assert ctx.pendingOpenings.get(winner.said) == opening.qb64
+            assert ctx.store.pendingOpening(rival.said).qb64 == rivalOpening.qb64
+            assert ctx.store.pendingOpening(winner.said).qb64 == opening.qb64
             assert not ctx.ingest(publisher.replay(gvrsn=Vrsn_2_0))["rejected"]
             assert ctx.store.headEvent(rip.said).said == winner.said
             assert ctx.store.opening(winner.said).qb64 == opening.qb64
-            assert ctx.pendingOpenings.get(rival.said) is None
+            assert ctx.store.pendingOpening(rival.said) is None
             assert ctx.store.opening(rival.said) is None
             exported = ctx.clone([rip.said])
             assert opening.qb64b in exported
@@ -433,7 +433,7 @@ def test_bad_disclosed_opening_does_not_stage_its_bup_or_poison_retry():
             rejected = ctx.ingest(framed(rip, (bup, wrong)), publish=True)
             assert rejected["rejected"]
             assert ctx.store.event(bup.said) is None
-            assert ctx.pendingOpenings.get(bup.said) is None
+            assert ctx.store.pendingOpening(bup.said) is None
             accepted = ctx.ingest(framed((bup, opening)), publish=True)
             assert accepted["accepted"][rip.said] == 1
             assert ctx.store.headEvent(rip.said).said == bup.said
