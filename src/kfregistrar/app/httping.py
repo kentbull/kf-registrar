@@ -6,13 +6,10 @@ Falcon resources for the registrar internal controller API and external
 observer-only bulk TEL API.
 """
 
-import json
-
 import falcon
 from keri import Vrsn_2_0
-from keri.app.httping import CESR_ATTACHMENT_HEADER, CESR_CONTENT_TYPE
-from keri.core import Number, Parser, Prefixer, SerderACDC, SerderKERI
-from keri.peer.exchanging import verifyAttachments, verifyQueryAttachments
+from keri.app.httping import CESR_CONTENT_TYPE, parseSignedQuery
+from keri.core import Number, Prefixer, SerderACDC
 from keri.kering import (
     ConfigurationError,
     ValidationError,
@@ -98,76 +95,20 @@ def _registrySaids(qry, store, rgy):
     raise falcon.HTTPBadRequest(description="registry scope must be an AID or list of AIDs")
 
 
-def _loadQueryStream(req):
-    """Read a signed qry as CESR-over-HTTP JSON+attachment or a raw CESR stream."""
-    ctype = (req.content_type or "").split(";")[0].strip().lower()
-    if ctype and ctype != CESR_CONTENT_TYPE:
-        raise falcon.HTTPError(
-            falcon.HTTP_NOT_ACCEPTABLE,
-            title="Content type error",
-            description="Unacceptable content type.",
-        )
-    raw = req.bounded_stream.read()
-    if not raw:
-        raise falcon.HTTPBadRequest(description="empty body")
-    atc = req.get_header(CESR_ATTACHMENT_HEADER, default=None)
-    if atc and raw.lstrip()[:1] == b"{":
-        payload = json.loads(raw)
-        serder = SerderKERI(sad=payload)
-        ims = bytearray(serder.raw)
-        ims.extend(atc.encode("utf-8") if isinstance(atc, str) else atc)
-        return ims
-    ims = bytearray(raw)
-    if atc and raw.lstrip()[:1] != b"{":
-        ims.extend(atc.encode("utf-8") if isinstance(atc, str) else atc)
-    return ims
-
-
-def _parseQuery(req):
-    """Parse exactly one complete signed V2 query from the HTTP request."""
-    try:
-        ims = _loadQueryStream(req)
-        dom = Parser(version=Vrsn_2_0).parseOneBare(ims=ims, framed=True,
-                                               processive=False, local=False)
-        if ims or dom is None or dom.serder is None:
-            raise ValueError("expected exactly one complete signed query")
-        if dom.serder.ilk != "qry" or dom.serder.pvrsn != Vrsn_2_0:
-            raise ValueError("external API accepts V2 qry messages only")
-        if not isinstance(dom.serder.sad.get("q"), dict):
-            raise ValueError("query must be an object")
-        return dom
-    except falcon.HTTPError:
-        raise
-    except Exception as ex:
-        raise falcon.HTTPBadRequest(description=str(ex)) from ex
-
-
 def _authenticateQuery(dom, ctx, allowed, routes):
-    """Enforce registrar role policy and verify the requester's KRAM evidence."""
+    """Enforce registrar role policy, then core KRAM query authentication."""
     serder = dom.serder
     if serder.route not in routes or serder.pre not in allowed:
         raise falcon.HTTPForbidden(description="requester or route is not authorized")
     kramer = ctx.kvy.kramer
-    if kramer is None or not kramer.enabled:
+    if kramer is None:
         raise falcon.HTTPServiceUnavailable(description="KRAM unavailable")
     kwa = {key: list(getattr(dom, key))
            for key in ("sigers", "cigars", "lsgs", "tsgs", "sscs", "ssts")}
-    kramer.reconcileConfig()
     try:
-        if kramer.intake(serder, kwa) is None:
-            raise ValueError("KRAM rejected query")
-        signatures = {key: kwa.get(key) for key in ("sigers", "cigars", "lsgs", "tsgs")}
-        if any(signatures.values()):
-            verified = verifyQueryAttachments(ctx.hby, serder, **signatures)
-        else:
-            seals = kwa.get("ssts", [])
-            seals += [(Prefixer(qb64=serder.pre), number, diger)
-                      for number, diger in kwa.get("sscs", [])]
-            own = [seal for seal in seals if seal[0].qb64 == serder.pre]
-            _, _, valid, invalid, missing = verifyAttachments(ctx.hby, serder, sourceSeals=own)
-            verified = bool(valid) and len(own) == len(seals) and not invalid and not missing
-        if not verified:
-            raise ValueError("query attachments do not authenticate the requester")
+        kramer.authenticateQuery(serder, kwa, hby=ctx.hby)
+    except ConfigurationError as ex:
+        raise falcon.HTTPServiceUnavailable(description=str(ex)) from ex
     except Exception as ex:
         raise falcon.HTTPUnauthorized(description=str(ex)) from ex
     return serder, serder.sad["q"]
@@ -348,7 +289,7 @@ class BulkQueryEnd:
             falcon.HTTPError: malformed, unauthorized, unavailable or unknown
                 registry requests. No network acquisition occurs on this path.
         """
-        dom = _parseQuery(req)
+        dom = parseSignedQuery(req)
         serder = dom.serder
         route = serder.route
         qry = serder.sad["q"]
@@ -407,7 +348,7 @@ class PublishEnd:
         Raises:
             falcon.HTTPError: authentication, authorization, or payload failure.
         """
-        _, qry = _authenticateQuery(_parseQuery(req), self.ctx,
+        _, qry = _authenticateQuery(parseSignedQuery(req), self.ctx,
                                     self.ctx.publishers, ("tels/publish",))
         raw = qry.get("stream")
         if not isinstance(raw, str) or not raw:
