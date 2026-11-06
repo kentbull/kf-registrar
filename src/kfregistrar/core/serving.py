@@ -196,7 +196,7 @@ class Context(doing.DoDoer):
                         disclosures.append((serder, opening))
                 else:
                     if serder.ilk not in ("icp", "dip", "rot", "drt", "ixn", "rct"):
-                        raise ValidationError("registrar intake accepts only public KEL and native TEL")
+                        raise ValidationError("registrar intake accepts only public KEL and v2 TEL")
                     self.parser.msgProcess(asdict(dom), kvy=self.kvy, tvy=None,
                                            exc=None, rvy=None, vry=None)
             except (MissingSignatureError, MissingWitnessSignatureError,
@@ -244,7 +244,7 @@ class Context(doing.DoDoer):
         return summary
 
     def _disclosedOpening(self, event, dom):
-        """Validate an explicitly supplied opening before native TEL processing."""
+        """Validate an explicitly supplied opening before v2 TEL processing."""
         from keri.acdc.regeventing import vetBlind
         supplied = [(BlindState, values) for values in dom.bsqs]
         supplied.extend((BoundState, values) for values in dom.bsss)

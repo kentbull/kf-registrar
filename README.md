@@ -17,7 +17,7 @@ Modeled on [`witness-hk`](https://github.com/keri-foundation/witness-hk):
   TEL data **without** running an observer. Also
   `POST /ingest` for hosting pre-built, KEL-anchored TEL events (e.g.
   presentation registries built in a wallet): JSON
-  `{ "kel": "<CESR>", "tel": "<CESR rip/bup>" }` → verify with the service-owned Kevery, Parser and native Regery
+  `{ "kel": "<CESR>", "tel": "<CESR rip/bup>" }` → verify with the service-owned Kevery, Parser and core Regery
   and store for observer bulk. This is controller publish, not a wallet status
   query.
 - **External** (default `127.0.0.1:6632`): signed V2 `qry` POST (`r: "tels/bulk"`
@@ -150,7 +150,7 @@ Public services hold no registry roots.
 
 Authorized publication may explicitly disclose one exact BSQ/BSS opening with a
 BUP. The app verifies its BLID and retains it only after ordinary TEL acceptance.
-If the exact BUP is in the native missing-anchor or out-of-order escrow, one
+If the exact BUP is in the core TEL missing-anchor or out-of-order escrow, one
 app-owned pending-opening table preserves only that canonical proof across
 restart. Acceptance promotes it through `RegistryStore.putOpening`; rejected or
 removed dependencies discard it. Pending proofs are never served. This adds no
