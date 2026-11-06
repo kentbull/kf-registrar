@@ -59,7 +59,7 @@ def test_installed_cli_runs_its_own_dual_http_service(tmp_path, scenario):
         proc = subprocess.Popen([
             "kf-registrar", "start", "--name", name, "--base", base,
             "--alias", "registrar", "--bootport", str(internal), "--http", str(external),
-            "--publisher", "explicit-unused-test-role", "--full-evidence", "--no-prompt"] + extra,
+            "--publisher", "explicit-unused-test-role", "--no-prompt"] + extra,
             env=env, stdout=output, stderr=subprocess.STDOUT)
         try:
             if scenario in ("encrypted-missing", "encrypted-wrong"):
@@ -97,3 +97,11 @@ def test_installed_cli_runs_its_own_dual_http_service(tmp_path, scenario):
             assert after == before
     finally:
         hby.close()
+
+
+def test_full_evidence_flag_is_removed():
+    """Full evidence is the only publication mode, so the retired flag is rejected."""
+    result = subprocess.run(["kf-registrar", "start", "--full-evidence", "--no-prompt"],
+                            capture_output=True, text=True, timeout=30)
+    assert result.returncode != 0
+    assert "unrecognized arguments: --full-evidence" in result.stderr

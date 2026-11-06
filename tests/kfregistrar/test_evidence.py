@@ -135,8 +135,7 @@ def test_signed_publication_exports_independently_verifiable_public_update(kind,
         publisher = issuer.makeHab(name="issuer")
         observer = reader.makeHab(name="observer")
         rip, bup, opening = issued(publisher, kind=kind, bound=bound)
-        ctx = makeContext(host, publishers=[publisher.pre], observers=[observer.pre],
-                          fullEvidence=True)
+        ctx = makeContext(host, publishers=[publisher.pre], observers=[observer.pre])
         independent = makeContext(reader, alias="observer")
         try:
             assert not ctx.ingest(publisher.replay(gvrsn=Vrsn_2_0))["rejected"]
@@ -294,7 +293,7 @@ def test_signed_pending_publication_retains_only_authorized_disclosure_after_reo
         hab = host.makeHab(name="registrar")
         baser = RegBaser(name="http-durable", headDirPath=str(tmp_path), temp=False)
         first = Context(host, hab, Regery(host, baser=baser),
-                        observers=[observer.pre], publishers=[publisher.pre], fullEvidence=True)
+                        observers=[observer.pre], publishers=[publisher.pre])
         first.externalApp = _corsApp()
         loadExternalEnds(first.externalApp, first)
         # Only the publisher's inception is initially available: the BUP's
@@ -319,7 +318,7 @@ def test_signed_pending_publication_retains_only_authorized_disclosure_after_reo
         first.close()
         baser.reopen()
         second = Context(host, hab, Regery(host, baser=baser),
-                         observers=[observer.pre], publishers=[publisher.pre], fullEvidence=True)
+                         observers=[observer.pre], publishers=[publisher.pre])
         second.externalApp = _corsApp()
         loadExternalEnds(second.externalApp, second)
         try:
@@ -344,7 +343,7 @@ def test_unpublished_intake_verifies_tel_without_retaining_public_opening():
           openHby(name="unpublished-host", version=Vrsn_2_0) as host):
         publisher = issuer.makeHab(name="publisher")
         rip, bup, opening = issued(publisher)
-        ctx = makeContext(host, fullEvidence=True)
+        ctx = makeContext(host)
         try:
             assert not ctx.ingest(publisher.replay(gvrsn=Vrsn_2_0))["rejected"]
             result = ctx.ingest(framed(rip, (bup, opening)))
@@ -369,7 +368,7 @@ def test_pending_public_opening_follows_core_sibling_arbitration():
         rivalOpening = Blinder.blind(acdc=opening.acdc, state="revoked")
         rival = blindate(rip.said, rip.said, rivalOpening.said)
         publisher.interact(data=[dict(i=rip.said, s=rival.sad["n"], d=rival.said)])
-        ctx = makeContext(host, fullEvidence=True)
+        ctx = makeContext(host)
         try:
             # Reversed arrival order cannot overrule the ordinary earlier
             # accepted KEL anchor, once that KEL evidence becomes available.
@@ -428,7 +427,7 @@ def test_bad_disclosed_opening_does_not_stage_its_bup_or_poison_retry():
         publisher = issuer.makeHab(name="publisher")
         rip, bup, opening = issued(publisher)
         wrong = Blinder.blind(acdc=opening.acdc, state="revoked")
-        ctx = makeContext(host, fullEvidence=True)
+        ctx = makeContext(host)
         try:
             assert not ctx.ingest(publisher.replay(gvrsn=Vrsn_2_0))["rejected"]
             rejected = ctx.ingest(framed(rip, (bup, wrong)), publish=True)

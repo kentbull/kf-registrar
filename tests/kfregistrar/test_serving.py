@@ -37,17 +37,6 @@ def _postCesr(client, hab, serder, path="/"):
     return client.simulate_post(path, body=bytes(msg), headers=headers)
 
 
-def _telIlks(raw):
-    """Read concatenated ACDC TEL bodies into ilk labels."""
-    ims = bytearray(raw)
-    ilks = []
-    while ims:
-        serder = SerderACDC(raw=ims)
-        ilks.append(serder.ilk)
-        del ims[:serder.size]
-    return ilks
-
-
 def _bulkQuery(hab, regk=None, route="tels/bulk", **qextra):
     q = dict(qextra)
     if regk is not None:
@@ -151,8 +140,9 @@ def test_whitelisted_observer_pulls_contiguous_tel():
             response = _postCesr(outer, observer, qry)
             assert response.status == falcon.HTTP_200
             assert response.headers["content-type"] == CESR_CONTENT_TYPE
-            assert response.content == ctx.rgy.store.cloneTel(regk)
-            assert _telIlks(response.content) == ["rip", "bup"]
+            assert response.content == ctx.clone([regk])
+            assert all(raw in response.content for raw in ctx.rgy.store.cloneTelIter(regk))
+            assert response.content.startswith(b'{"v":"KERI')  # supporting KEL precedes the TEL
         finally:
             ctx.rgy.close()
 
@@ -266,8 +256,7 @@ def test_controller_ingest_hosts_foreign_tel_for_observer_bulk():
             qry = _bulkQuery(observer, regk=regk, route="tels/bulk")
             response = _postCesr(outer, observer, qry)
             assert response.status == falcon.HTTP_200
-            assert response.content == telBytes
-            assert _telIlks(response.content) == ["rip", "bup"]
+            assert rip.raw in response.content and bup.raw in response.content
         finally:
             ctx.rgy.close()
 
@@ -327,7 +316,7 @@ def test_controller_ingest_pending_until_kel_anchors():
                 qry2 = _bulkQuery(observer, regk=regk, route="tels/bulk")
                 response = _postCesr(outer, observer, qry2)
                 assert response.status == falcon.HTTP_200
-                assert response.content == telBytes
+                assert rip.raw in response.content and bup.raw in response.content
             finally:
                 ctx.rgy.close()
 
