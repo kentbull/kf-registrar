@@ -6,7 +6,7 @@ CLI entry point for the registrar operational network.
 """
 
 import multicommand
-from hio.base import doing
+from keri.app.directing import runController
 from keri import help
 
 from kfregistrar.app.cli import commands
@@ -28,9 +28,7 @@ def main():
         doers = args.handler(args)
         if not doers:
             return
-        tock = 0.00125
-        doist = doing.Doist(limit=0.0, tock=tock, real=True)
-        doist.do(doers=doers)
+        runController(doers=doers, expire=0.0)  # Doist tick from KERI_DOIST_TOCK
     except Exception as ex:
         print(f"ERR: {ex}")
         return -1
