@@ -10,9 +10,9 @@ import logging
 import sys
 import os
 
-from hio.base import doing
 from keri import __version__, help
 from keri.app import Configer, Habery, HaberyDoer, Keeper
+from keri.app.directing import runController
 from keri.cli.common.existing import setupHby
 from keri.kering import AuthError, Vrsn_2_0
 
@@ -223,9 +223,7 @@ def runRegistrar(args, expire=0.0):
             )
         )
 
-        tock = 0.00125
-        doist = doing.Doist(limit=expire, tock=tock, real=True)
-        doist.do(doers=doers)
+        runController(doers=doers, expire=expire, tock=hby.tocks["doist"])
     finally:
         if hby is not None:
             hby.close()
