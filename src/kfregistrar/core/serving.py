@@ -16,6 +16,7 @@ from hio.core import http
 from keri import Vrsn_2_0, help
 from keri.acdc import Registrar, Regery
 from keri.app.indirecting import createHttpServer
+from keri.app.tocking import TOCKS, Tock, resolveTocks
 from keri.core import (Blinder, Codens, Counter, Kevery, Parser, SerderACDC,
                        SerderKERI)
 from keri.core.kraming import Pruner
@@ -28,6 +29,21 @@ from kfregistrar.core.ingesting import ControllerIngester, hostedRegistrySaids
 
 
 logger = help.ogler.getLogger()
+
+# 1.25 ms rather than KERIpy's 10 ms default: the registrar serves controller and
+# observer requests on their latency path, so its tick was set for response time
+# over idle CPU. KERI_DOIST_TOCK or a tocks.doist config value still overrides it.
+REGISTRAR_DOIST_TOCK = 0.00125
+REGISTRAR_TOCKS = TOCKS | {"doist": Tock(env=TOCKS["doist"].env, default=REGISTRAR_DOIST_TOCK)}
+
+
+def doistTock(cfTocks=None):
+    """Return the registrar Doist tick from KERIpy's tock precedence.
+
+    KERI_DOIST_TOCK wins, then cfTocks["doist"] (a config file's tocks object),
+    then REGISTRAR_DOIST_TOCK. Invalid values raise ConfigurationError.
+    """
+    return resolveTocks(cfTocks, tocks=REGISTRAR_TOCKS)["doist"]
 
 CORS_EXPOSE = [
     "cesr-attachment",

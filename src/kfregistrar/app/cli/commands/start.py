@@ -223,7 +223,8 @@ def runRegistrar(args, expire=0.0):
             )
         )
 
-        runController(doers=doers, expire=expire, tock=hby.tocks["doist"])
+        runController(doers=doers, expire=expire,
+                      tock=serving.doistTock(hby.cf.get().get("tocks")))
     finally:
         if hby is not None:
             hby.close()

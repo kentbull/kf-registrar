@@ -338,3 +338,14 @@ def test_external_ingest_refuses_unsigned_controller_payload():
             assert response.status == falcon.HTTP_406
         finally:
             ctx.rgy.close()
+
+
+def test_registrar_doist_tock_defaults_fast_and_follows_registry(monkeypatch):
+    from kfregistrar.core import serving
+
+    monkeypatch.delenv("KERI_DOIST_TOCK", raising=False)
+    assert serving.doistTock() == serving.REGISTRAR_DOIST_TOCK == 0.00125
+    assert serving.doistTock({"witnessMsg": 0.0}) == 0.00125
+    assert serving.doistTock({"doist": 0.02}) == 0.02
+    monkeypatch.setenv("KERI_DOIST_TOCK", "0.005")
+    assert serving.doistTock({"doist": 0.02}) == 0.005
